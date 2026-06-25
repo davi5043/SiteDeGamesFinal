@@ -1,19 +1,14 @@
 <?php
 // =====================================================
 // CONEXÃO COM O BANCO DE DADOS
-// Arquivo: includes/conexao.php
-// Descrição: Estabelece a conexão PDO com o MySQL
 // =====================================================
 
-// Configurações do banco de dados
-// Altere estas variáveis conforme seu ambiente (XAMPP, WAMP, etc.)
-$host = 'localhost';       // Endereço do servidor MySQL
-$dbname = 'portal_games';  // Nome do banco de dados
-$usuario = 'root';         // Usuário do MySQL (padrão XAMPP: root)
-$senha_db = '';             // Senha do MySQL (padrão XAMPP: vazia)
+$host = 'localhost';
+$dbname = 'portal_games';
+$usuario = 'root';
+$senha_db = '';
 
 try {
-    // Cria a conexão usando PDO (PHP Data Objects)
     $pdo = new PDO(
         "mysql:host=$host;dbname=$dbname;charset=utf8mb4",
         $usuario,

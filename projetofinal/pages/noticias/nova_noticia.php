@@ -24,6 +24,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_mensagem('sucesso', 'Notícia publicada com sucesso!');
         redirecionar('pages/noticias/dashboard.php');
     }
+    <?php
+require_once __DIR__ . '/../../includes/verifica_login.php';
+require_once __DIR__ . '/../../includes/conexao.php';
+
+$categorias = get_categorias($pdo);
+
+$erro = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $titulo = trim($_POST['titulo'] ?? '');
+    $conteudo = trim($_POST['noticia'] ?? '');
+    $imagem = trim($_POST['imagem'] ?? '');
+    $
+}
 }
 ?>
 <!DOCTYPE html>
