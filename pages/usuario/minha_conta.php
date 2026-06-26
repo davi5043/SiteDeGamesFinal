@@ -15,6 +15,7 @@ if (isset($_SESSION['usuario_id']) && !empty($_SESSION['usuario_id'])) {
 // Caso contrário, vai para a página de login
 header("Location: " . BASE_URL . "login.php");
 exit;
+?>
 
 <!DOCTYPE html>
 <html lang="en">
