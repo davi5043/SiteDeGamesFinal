@@ -94,7 +94,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             <p class="text-center text-gray-400 mt-6">
                 Não tem conta?
-                <a href="<?= BASE_URL ?>pages/auth/cadastro.php" class="text-purple-400 hover:text-purple-300 font-medium">Cadastre-se</a>
+                <a href="<?= BASE_URL ?>pages/auth/cadastro.php"  class="text-purple-400 hover:text-purple-300 font-medium">Cadastre-se</a>
+               
             </p>
         </div>
 
