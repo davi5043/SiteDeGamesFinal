@@ -212,6 +212,61 @@ ALTER TABLE `noticias`
   ADD CONSTRAINT `fk_noticias_categoria` FOREIGN KEY (`categoria_id`) REFERENCES `categorias` (`id`) ON DELETE SET NULL;
 COMMIT;
 
+-- =====================================================
+-- GGNews — Tabela de Likes (Curtidas)
+-- Cole no phpMyAdmin → banco portal_games → aba SQL
+-- =====================================================
+
+-- 1. CRIA A TABELA
+CREATE TABLE IF NOT EXISTS `likes` (
+  `id`          int(11)  NOT NULL AUTO_INCREMENT,
+  `noticia_id`  int(11)  NOT NULL,
+  `usuario_id`  int(11)  NOT NULL,
+  `criado_em`   datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  -- Garante que um usuário só pode curtir uma notícia uma vez
+  UNIQUE KEY `like_unico` (`noticia_id`, `usuario_id`),
+  KEY `noticia_id`  (`noticia_id`),
+  KEY `usuario_id`  (`usuario_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+-- 2. ADICIONA AS FOREIGN KEYS (SE NÃO EXISTIREM)
+-- Verifica se as constraints já existem antes de adicionar
+SET @constraint_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.REFERENTIAL_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = 'portal_games'
+    AND TABLE_NAME = 'likes'
+    AND CONSTRAINT_NAME = 'likes_ibfk_1'
+);
+
+-- Só adiciona se não existir
+SET @sql = IF(@constraint_exists = 0,
+  'ALTER TABLE `likes` ADD CONSTRAINT `likes_ibfk_1` FOREIGN KEY (`noticia_id`) REFERENCES `noticias` (`id`) ON DELETE CASCADE;',
+  'SELECT "Constraint likes_ibfk_1 já existe" AS mensagem;'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @constraint_exists = (
+  SELECT COUNT(*)
+  FROM information_schema.REFERENTIAL_CONSTRAINTS
+  WHERE CONSTRAINT_SCHEMA = 'portal_games'
+    AND TABLE_NAME = 'likes'
+    AND CONSTRAINT_NAME = 'likes_ibfk_2'
+);
+
+SET @sql = IF(@constraint_exists = 0,
+  'ALTER TABLE `likes` ADD CONSTRAINT `likes_ibfk_2` FOREIGN KEY (`usuario_id`) REFERENCES `usuarios` (`id`) ON DELETE CASCADE;',
+  'SELECT "Constraint likes_ibfk_2 já existe" AS mensagem;'
+);
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+
+
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
