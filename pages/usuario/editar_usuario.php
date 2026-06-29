@@ -24,7 +24,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     $foto = $usuario['foto'];
 
-    // Upload de foto
     if (!empty($_FILES['foto']['name']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
 
         $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -60,7 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
-    // Validações
     if (empty($erro)) {
         if (empty($nome) || empty($email)) {
             $erro = 'Nome e email são obrigatórios.';
@@ -82,7 +80,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $usuario['foto'] = $foto;
 
-                // Troca de senha (opcional)
                 if (!empty($nova_senha)) {
                     if (empty($senha_atual)) {
                         $erro = 'Informe a senha atual para alterar a senha.';
@@ -129,7 +126,7 @@ $usuario_logado = [
 
     <style>
         /* =====================================================
-           ESTILOS PARA EDITAR PERFIL
+           CSS EDITAR PERFIL - HEADER ORGANIZADO
            ===================================================== */
 
         * {
@@ -140,7 +137,7 @@ $usuario_logado = [
 
         body {
             font-family: 'Inter', sans-serif;
-            background: #f8f4f0;
+            background: #f3f0eb;
             color: #1a1a1a;
             min-height: 100vh;
         }
@@ -150,11 +147,11 @@ $usuario_logado = [
             color: #eeeaf8;
         }
 
-        /* ── HEADER ──────────────────────────────────────────────── */
+        /* ── HEADER ORGANIZADO ──────────────────────────────────── */
         .site-header {
             background: #ffffff;
-            border-bottom: 1px solid #e8e2da;
-            padding: 0.75rem 1rem;
+            border-bottom: 2px solid #e0d8d0;
+            padding: 0.75rem 1.5rem;
             position: sticky;
             top: 0;
             z-index: 30;
@@ -166,13 +163,16 @@ $usuario_logado = [
         }
 
         .header-inner {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.5rem;
         }
 
+        /* ── LADO ESQUERDO: Avatar + Logo ───────────────────────── */
         .header-left {
             display: flex;
             align-items: center;
@@ -184,7 +184,7 @@ $usuario_logado = [
             height: 36px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #e8e2da;
+            border: 2px solid #e0d8d0;
         }
 
         [data-theme="dark"] .header-left .avatar {
@@ -202,7 +202,7 @@ $usuario_logado = [
             color: #5b21b6;
             font-weight: 700;
             font-size: 0.8rem;
-            border: 2px solid #e8e2da;
+            border: 2px solid #e0d8d0;
         }
 
         [data-theme="dark"] .header-left .avatar-fallback {
@@ -216,6 +216,7 @@ $usuario_logado = [
             font-weight: 700;
             color: #1a1a1a;
             text-decoration: none;
+            transition: color 0.2s ease;
         }
 
         [data-theme="dark"] .header-logo {
@@ -226,22 +227,28 @@ $usuario_logado = [
             color: #7c3aed;
         }
 
+        .header-logo:hover {
+            color: #7c3aed;
+        }
+
+        /* ── LADO DIREITO: Toggle + Voltar ──────────────────────── */
         .header-right {
             display: flex;
             align-items: center;
-            gap: 0.75rem;
+            gap: 1rem;
         }
 
+        /* ── TOGGLE DE TEMA ─────────────────────────────────────── */
         .theme-toggle {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            background: #f8f4f0;
-            border: 1px solid #e8e2da;
+            background: #f3f0eb;
+            border: 1px solid #e0d8d0;
             border-radius: 0.5rem;
-            padding: 0.25rem 0.75rem;
+            padding: 0.4rem 0.75rem;
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
         }
 
         [data-theme="dark"] .theme-toggle {
@@ -251,19 +258,22 @@ $usuario_logado = [
 
         .theme-toggle:hover {
             background: #ede9fe;
+            border-color: #7c3aed;
         }
 
         [data-theme="dark"] .theme-toggle:hover {
             background: #1c1831;
+            border-color: #7c3aed;
         }
 
         .toggle-track {
             width: 30px;
             height: 18px;
-            background: #e8e2da;
+            background: #d0c8c0;
             border-radius: 99px;
             position: relative;
             transition: background 0.25s ease;
+            flex-shrink: 0;
         }
 
         [data-theme="dark"] .toggle-track {
@@ -272,10 +282,10 @@ $usuario_logado = [
 
         .toggle-thumb {
             position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 12px;
-            height: 12px;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #fff;
             box-shadow: 0 1px 4px rgba(0,0,0,0.2);
@@ -287,29 +297,51 @@ $usuario_logado = [
         }
 
         .toggle-icon {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
+            line-height: 1;
+            color: #5f6378;
         }
 
+        [data-theme="dark"] .toggle-icon {
+            color: #918fac;
+        }
+
+        .toggle-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: #5f6378;
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .toggle-label {
+            color: #918fac;
+        }
+
+        /* ── BOTÃO VOLTAR ───────────────────────────────────────── */
         .btn-voltar {
             color: #9ca3af;
             font-size: 0.875rem;
             text-decoration: none;
             transition: color 0.2s ease;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.3rem;
+            white-space: nowrap;
         }
 
         .btn-voltar:hover {
             color: #7c3aed;
+            background: rgba(124, 58, 237, 0.05);
         }
 
         [data-theme="dark"] .btn-voltar {
             color: #5e5c76;
         }
 
-        /* ── MAIN ────────────────────────────────────────────────── */
+        /* ── CONTEÚDO PRINCIPAL ─────────────────────────────────── */
         .container {
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto;
-            padding: 2rem 1rem;
+            padding: 2.5rem 1.5rem;
         }
 
         .titulo {
@@ -317,6 +349,9 @@ $usuario_logado = [
             font-weight: 700;
             color: #1a1a1a;
             margin-bottom: 2rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 3px solid #7c3aed;
+            display: inline-block;
         }
 
         [data-theme="dark"] .titulo {
@@ -326,36 +361,50 @@ $usuario_logado = [
         /* ── FORMULÁRIO ──────────────────────────────────────────── */
         .form-card {
             background: #ffffff;
-            border: 1px solid #e8e2da;
+            border: 1px solid #e0d8d0;
             border-radius: 1rem;
-            padding: 2rem;
+            padding: 2.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
 
         [data-theme="dark"] .form-card {
             background: #121218;
             border-color: #252535;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.35);
         }
 
         /* ── AVATAR UPLOAD ───────────────────────────────────────── */
         .avatar-upload {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
+            padding-bottom: 2rem;
+            border-bottom: 2px solid #e0d8d0;
+        }
+
+        [data-theme="dark"] .avatar-upload {
+            border-color: #252535;
         }
 
         .avatar-preview {
-            width: 96px;
-            height: 96px;
+            width: 120px;
+            height: 120px;
             border-radius: 50%;
-            margin: 0 auto 0.75rem;
-            border: 2px solid #e8e2da;
+            margin: 0 auto 1rem;
+            border: 3px solid #e0d8d0;
             overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
+            transition: all 0.3s ease;
         }
 
         [data-theme="dark"] .avatar-preview {
             border-color: #252535;
+        }
+
+        .avatar-preview:hover {
+            border-color: #7c3aed;
+            transform: scale(1.02);
         }
 
         .avatar-preview img {
@@ -373,7 +422,7 @@ $usuario_logado = [
             background: #ede9fe;
             color: #5b21b6;
             font-weight: 700;
-            font-size: 2rem;
+            font-size: 3rem;
         }
 
         [data-theme="dark"] .avatar-preview .fallback {
@@ -381,18 +430,26 @@ $usuario_logado = [
             color: #c4b5fd;
         }
 
+        .btn-upload-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         .btn-upload {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: #f8f4f0;
+            background: #f3f0eb;
             color: #5f6378;
-            padding: 0.4rem 1rem;
+            padding: 0.7rem 2rem;
             border-radius: 0.5rem;
-            border: 1px solid #e8e2da;
-            font-size: 0.875rem;
+            border: 1px solid #e0d8d0;
+            font-size: 0.9rem;
+            font-weight: 500;
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
         }
 
         [data-theme="dark"] .btn-upload {
@@ -403,16 +460,18 @@ $usuario_logado = [
 
         .btn-upload:hover {
             background: #ede9fe;
+            border-color: #7c3aed;
+            transform: translateY(-2px);
         }
 
         [data-theme="dark"] .btn-upload:hover {
             background: #1c1831;
+            border-color: #7c3aed;
         }
 
         .upload-hint {
             font-size: 0.75rem;
             color: #9ca3af;
-            margin-top: 0.5rem;
         }
 
         [data-theme="dark"] .upload-hint {
@@ -421,15 +480,20 @@ $usuario_logado = [
 
         /* ── CAMPOS DO FORMULÁRIO ────────────────────────────────── */
         .form-group {
-            margin-bottom: 1.25rem;
+            margin-bottom: 1.75rem;
+        }
+
+        .form-group:last-of-type {
+            margin-bottom: 1rem;
         }
 
         .form-label {
             display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
+            font-size: 0.9rem;
+            font-weight: 600;
             color: #5f6378;
-            margin-bottom: 0.375rem;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.02em;
         }
 
         [data-theme="dark"] .form-label {
@@ -438,14 +502,14 @@ $usuario_logado = [
 
         .form-input {
             width: 100%;
-            padding: 0.7rem 1rem;
-            border: 1px solid #e8e2da;
+            padding: 0.9rem 1rem;
+            border: 1.5px solid #e0d8d0;
             border-radius: 0.5rem;
             background: #f8f4f0;
             color: #1a1a1a;
             font-family: inherit;
-            font-size: 0.875rem;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            font-size: 1rem;
+            transition: all 0.2s ease;
         }
 
         [data-theme="dark"] .form-input {
@@ -455,7 +519,7 @@ $usuario_logado = [
         }
 
         .form-input::placeholder {
-            color: #9ca3af;
+            color: #b0a8a0;
         }
 
         [data-theme="dark"] .form-input::placeholder {
@@ -465,13 +529,19 @@ $usuario_logado = [
         .form-input:focus {
             outline: none;
             border-color: #7c3aed;
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.13);
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+            background: #ffffff;
+        }
+
+        [data-theme="dark"] .form-input:focus {
+            background: #121218;
         }
 
         /* ── DIVISOR ──────────────────────────────────────────────── */
         .divisor {
-            border-top: 1px solid #e8e2da;
-            margin: 1.5rem 0;
+            border: none;
+            border-top: 2px solid #e0d8d0;
+            margin: 2rem 0;
         }
 
         [data-theme="dark"] .divisor {
@@ -479,12 +549,22 @@ $usuario_logado = [
         }
 
         .divisor-texto {
-            font-size: 0.875rem;
+            font-size: 1rem;
             color: #9ca3af;
             margin-bottom: 1rem;
+            font-weight: 500;
         }
 
         [data-theme="dark"] .divisor-texto {
+            color: #5e5c76;
+        }
+
+        .divisor-texto span {
+            font-style: italic;
+            color: #b0a8a0;
+        }
+
+        [data-theme="dark"] .divisor-texto span {
             color: #5e5c76;
         }
 
@@ -493,18 +573,20 @@ $usuario_logado = [
             width: 100%;
             background: #7c3aed;
             color: #fff;
-            padding: 0.75rem;
+            padding: 1rem;
             border: none;
             border-radius: 0.5rem;
             font-weight: 600;
-            font-size: 1rem;
+            font-size: 1.05rem;
             cursor: pointer;
-            transition: background 0.2s ease, transform 0.2s ease;
+            transition: all 0.2s ease;
+            margin-top: 0.5rem;
         }
 
         .btn-salvar:hover {
             background: #6d28d9;
             transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3);
         }
 
         .btn-excluir-conta {
@@ -512,13 +594,20 @@ $usuario_logado = [
             color: #ef4444;
             text-decoration: none;
             display: inline-block;
-            margin-top: 1rem;
-            transition: color 0.2s ease;
+            margin-top: 0.5rem;
+            padding: 0.5rem 0.8rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
         }
 
         .btn-excluir-conta:hover {
             color: #dc2626;
+            background: rgba(239, 68, 68, 0.1);
             text-decoration: underline;
+        }
+
+        [data-theme="dark"] .btn-excluir-conta:hover {
+            background: rgba(239, 68, 68, 0.2);
         }
 
         /* ── MENSAGEM DE ERRO ────────────────────────────────────── */
@@ -526,29 +615,142 @@ $usuario_logado = [
             background: rgba(239, 68, 68, 0.1);
             border: 1px solid #ef4444;
             color: #dc2626;
-            padding: 0.75rem 1rem;
+            padding: 1rem 1.25rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
         }
 
         [data-theme="dark"] .msg-erro {
             color: #f87171;
+            background: rgba(239, 68, 68, 0.15);
         }
 
         /* ── RESPONSIVIDADE ────────────────────────────────────── */
-        @media (max-width: 480px) {
-            .form-card {
-                padding: 1rem;
+        @media (max-width: 768px) {
+            .container {
+                padding: 2rem 1rem;
             }
 
-            .header-inner {
-                flex-wrap: wrap;
-                gap: 0.5rem;
+            .form-card {
+                padding: 1.5rem;
             }
 
             .titulo {
-                font-size: 1.5rem;
+                font-size: 1.6rem;
+            }
+
+            .avatar-preview {
+                width: 100px;
+                height: 100px;
+            }
+
+            .header-inner {
+                gap: 0.75rem;
+            }
+
+            .header-right {
+                gap: 0.5rem;
+            }
+
+            .theme-toggle {
+                padding: 0.3rem 0.5rem;
+            }
+
+            .toggle-label {
+                font-size: 0.6rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 1rem 0.75rem;
+            }
+
+            .form-card {
+                padding: 1.25rem;
+            }
+
+            .titulo {
+                font-size: 1.3rem;
+            }
+
+            .header-inner {
+                flex-direction: column;
+                align-items: center;
+                gap: 0.5rem;
+                padding: 0.25rem 0;
+            }
+
+            .header-left {
+                gap: 0.5rem;
+            }
+
+            .header-logo {
+                font-size: 1rem;
+            }
+
+            .header-right {
+                width: 100%;
+                justify-content: center;
+                gap: 0.75rem;
+            }
+
+            .theme-toggle {
+                padding: 0.25rem 0.5rem;
+            }
+
+            .toggle-track {
+                width: 24px;
+                height: 14px;
+            }
+
+            .toggle-thumb {
+                width: 10px;
+                height: 10px;
+                top: 2px;
+                left: 2px;
+            }
+
+            [data-theme="dark"] .toggle-thumb {
+                transform: translateX(10px);
+            }
+
+            .toggle-label {
+                font-size: 0.55rem;
+            }
+
+            .toggle-icon {
+                font-size: 0.7rem;
+            }
+
+            .btn-voltar {
+                font-size: 0.8rem;
+                padding: 0.2rem 0.5rem;
+            }
+
+            .form-input {
+                padding: 0.7rem 0.8rem;
+                font-size: 0.9rem;
+            }
+
+            .btn-salvar {
+                padding: 0.8rem;
+                font-size: 0.95rem;
+            }
+
+            .avatar-preview {
+                width: 80px;
+                height: 80px;
+            }
+
+            .avatar-preview .fallback {
+                font-size: 2rem;
+            }
+
+            .btn-upload {
+                padding: 0.5rem 1.5rem;
+                font-size: 0.8rem;
             }
         }
     </style>
@@ -562,25 +764,31 @@ $usuario_logado = [
 </head>
 <body>
 
-    <!-- ════════════════════════════════════════════════════
-         HEADER
-    ════════════════════════════════════════════════════ -->
+    <!-- HEADER ORGANIZADO -->
     <header class="site-header">
         <div class="header-inner">
 
+            <!-- LADO ESQUERDO: Avatar + GGNews -->
             <div class="header-left">
-                <?= render_avatar($usuario_logado, 36) ?>
+                <?php 
+                if ($usuario_logado && $usuario_logado['foto']): ?>
+                    <img src="../../uploads/<?= escape($usuario_logado['foto']) ?>" class="avatar" alt="Avatar">
+                <?php else: ?>
+                    <div class="avatar-fallback"><?= get_avatar_initials(get_usuario_nome()) ?></div>
+                <?php endif; ?>
                 <a href="../../index.php" class="header-logo">
                     🎮 <span>GG</span>News
                 </a>
             </div>
 
+            <!-- LADO DIREITO: Toggle + Voltar -->
             <div class="header-right">
                 <button id="theme-toggle" class="theme-toggle" aria-label="Alternar tema">
                     <div class="toggle-track" id="toggle-track">
                         <div class="toggle-thumb" id="toggle-thumb"></div>
                     </div>
                     <span class="toggle-icon" id="theme-icon">🌙</span>
+                    <span class="toggle-label" id="theme-label">Modo Escuro</span>
                 </button>
                 <a href="../noticias/dashboard.php" class="btn-voltar">← Voltar</a>
             </div>
@@ -588,9 +796,7 @@ $usuario_logado = [
         </div>
     </header>
 
-    <!-- ════════════════════════════════════════════════════
-         MAIN
-    ════════════════════════════════════════════════════ -->
+    <!-- CONTEÚDO PRINCIPAL -->
     <main class="container">
 
         <h1 class="titulo">👤 Editar Perfil</h1>
@@ -611,84 +817,86 @@ $usuario_logado = [
                     <?php endif; ?>
                 </div>
 
-                <label for="foto" class="btn-upload">
-                    📷 Alterar foto
-                </label>
-                <input type="file" name="foto" id="foto" accept="image/*" style="display:none;">
-                <p class="upload-hint">JPG, PNG, WEBP — máx. 2 MB</p>
+                <div class="btn-upload-wrapper">
+                    <label for="foto" class="btn-upload">
+                        📷 Alterar foto
+                    </label>
+                    <input type="file" name="foto" id="foto" accept="image/*" style="display:none;">
+                    <span class="upload-hint">Formatos: JPG, PNG, WEBP — Tamanho máximo: 2 MB</span>
+                </div>
             </div>
 
             <!-- NOME -->
             <div class="form-group">
-                <label for="nome" class="form-label">Nome</label>
+                <label for="nome" class="form-label">📛 Nome completo</label>
                 <input type="text" name="nome" id="nome"
                        value="<?= escape($nome) ?>"
                        class="form-input"
-                       placeholder="Seu nome completo">
+                       placeholder="Digite seu nome completo">
             </div>
 
             <!-- USERNAME -->
             <div class="form-group">
-                <label for="username" class="form-label">Username</label>
+                <label for="username" class="form-label">🔖 Username</label>
                 <input type="text" name="username" id="username"
                        value="<?= escape($username) ?>"
                        class="form-input"
-                       placeholder="@seuusername">
+                       placeholder="Digite seu @username">
             </div>
 
             <!-- EMAIL -->
             <div class="form-group">
-                <label for="email" class="form-label">Email</label>
+                <label for="email" class="form-label">📧 E-mail</label>
                 <input type="email" name="email" id="email"
                        value="<?= escape($email) ?>"
                        class="form-input"
-                       placeholder="seu@email.com">
+                       placeholder="Digite seu e-mail">
             </div>
 
             <!-- DIVISOR -->
-            <div class="divisor"></div>
-            <p class="divisor-texto">🔒 Alterar senha <span style="font-style:italic;">(opcional)</span></p>
+            <hr class="divisor">
+            <p class="divisor-texto">🔒 Alterar senha <span>(opcional)</span></p>
 
             <!-- SENHA ATUAL -->
             <div class="form-group">
-                <label for="senha_atual" class="form-label">Senha atual</label>
+                <label for="senha_atual" class="form-label">🔑 Senha atual</label>
                 <input type="password" name="senha_atual" id="senha_atual"
                        class="form-input"
-                       placeholder="••••••••">
+                       placeholder="Digite sua senha atual">
             </div>
 
             <!-- NOVA SENHA -->
             <div class="form-group">
-                <label for="nova_senha" class="form-label">Nova senha</label>
+                <label for="nova_senha" class="form-label">🔐 Nova senha</label>
                 <input type="password" name="nova_senha" id="nova_senha"
                        class="form-input"
                        placeholder="Mínimo 6 caracteres">
             </div>
 
             <!-- EXCLUIR CONTA -->
-            <div style="margin-bottom:1.5rem;">
+            <div style="margin: 0.5rem 0 1.5rem 0;">
                 <a href="excluir_usuario.php"
-                   onclick="return confirm('Tem certeza que deseja excluir sua conta permanentemente? Todas as suas notícias serão removidas.')"
+                   onclick="return confirm('⚠️ Tem certeza que deseja excluir sua conta permanentemente? Todas as suas notícias serão removidas.')"
                    class="btn-excluir-conta">
                     🗑️ Excluir minha conta
                 </a>
             </div>
 
-            <button type="submit" class="btn-salvar">Salvar Alterações</button>
+            <!-- BOTÃO SALVAR -->
+            <button type="submit" class="btn-salvar">💾 Salvar Alterações</button>
 
         </form>
 
     </main>
 
-    <!-- ════════════════════════════════════════════════════
-         SCRIPTS
-    ════════════════════════════════════════════════════ -->
+    <!-- SCRIPTS -->
     <script>
     (function () {
         var html  = document.documentElement;
         var btn   = document.getElementById('theme-toggle');
         var track = document.getElementById('toggle-track');
         var icon  = document.getElementById('theme-icon');
+        var label = document.getElementById('theme-label');
 
         function applyTheme(theme) {
             html.setAttribute('data-theme', theme);
@@ -696,9 +904,11 @@ $usuario_logado = [
             if (theme === 'dark') {
                 track && track.classList.add('is-dark');
                 if (icon) icon.textContent = '☀️';
+                if (label) label.textContent = 'Modo Claro';
             } else {
                 track && track.classList.remove('is-dark');
                 if (icon) icon.textContent = '🌙';
+                if (label) label.textContent = 'Modo Escuro';
             }
         }
 
@@ -708,7 +918,7 @@ $usuario_logado = [
             applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
         });
 
-        /* ── PREVIEW DA FOTO ────────────────────────────────────── */
+        /* PREVIEW DA FOTO */
         var inputFoto   = document.getElementById('foto');
         var previewWrap = document.getElementById('avatar-preview');
 

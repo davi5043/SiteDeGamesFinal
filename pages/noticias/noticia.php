@@ -58,6 +58,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
             $erro_comentario = 'O comentário não pode estar vazio.';
         } elseif (strlen($conteudo) < 3) {
             $erro_comentario = 'O comentário deve ter no mínimo 3 caracteres.';
+        } elseif (strlen($conteudo) > 1000) {
+            $erro_comentario = 'O comentário deve ter no máximo 1000 caracteres.';
         } else {
             if (adicionar_comentario($pdo, $id, get_usuario_id(), $conteudo)) {
                 $sucesso_comentario = 'Comentário adicionado com sucesso!';
@@ -113,7 +115,7 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             height: 36px;
             border-radius: 50%;
             object-fit: cover;
-            border: 2px solid #e8e2da;
+            border: 2px solid var(--border);
             flex-shrink: 0;
         }
 
@@ -124,19 +126,340 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             display: flex;
             align-items: center;
             justify-content: center;
-            background: #ede9fe;
-            color: #5b21b6;
+            background: var(--accent-light);
+            color: var(--accent-text);
             font-weight: 700;
             font-size: 0.8rem;
-            border: 2px solid #e8e2da;
+            border: 2px solid var(--border);
             flex-shrink: 0;
         }
 
-        [data-theme="dark"] .comentario-item-header .avatar-fallback {
-            background: #1c1831;
-            color: #c4b5fd;
-            border-color: #252535;
+        .comentario-form-header .avatar-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--border);
         }
+
+        .comentario-form-header .avatar-fallback {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-light);
+            color: var(--accent-text);
+            font-weight: 700;
+            font-size: 0.9rem;
+            border: 2px solid var(--border);
+        }
+
+        .badge-cat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: var(--accent-light);
+            color: var(--accent-text);
+            padding: 0.2rem 0.75rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent);
+            color: #fff;
+            padding: 0.5rem 1.1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
+        .sidebar {
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border);
+            box-shadow: var(--shadow-lg);
+            transition: background var(--transition-theme), border-color var(--transition-theme), transform 0.3s ease;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+            padding: 0.25rem 0.25rem 0.5rem;
+        }
+
+        .logo-icon {
+            width: 38px;
+            height: 38px;
+            background: var(--accent-light);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        .logo-text {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1.1;
+        }
+
+        .logo-text span {
+            color: var(--accent);
+        }
+
+        .logo-tag {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            letter-spacing: 0.02em;
+        }
+
+        .sidebar-section-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            padding: 0.75rem 0.75rem 0.35rem;
+        }
+
+        .sidebar-nav, .sidebar-categories {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-decoration: none;
+            position: relative;
+            transition: background 0.18s ease, color 0.18s ease;
+        }
+
+        .nav-link:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+        }
+
+        .nav-link.active {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 18%;
+            height: 64%;
+            width: 3px;
+            background: var(--accent);
+            border-radius: 0 3px 3px 0;
+        }
+
+        .nav-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: var(--bg-elevated);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .cat-icon {
+            width: 22px;
+            text-align: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .nav-link-danger {
+            color: #ef4444 !important;
+        }
+
+        .nav-link-danger:hover {
+            background: #fef2f2 !important;
+            color: #dc2626 !important;
+        }
+
+        .theme-toggle-wrap {
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+            margin-top: auto;
+        }
+
+        .theme-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: background 0.18s ease;
+            text-align: left;
+        }
+
+        .theme-toggle-btn:hover {
+            background: var(--bg-elevated);
+        }
+
+        .toggle-track {
+            position: relative;
+            width: 38px;
+            height: 22px;
+            background: var(--border);
+            border-radius: 99px;
+            flex-shrink: 0;
+            transition: background 0.25s ease;
+        }
+
+        .toggle-track.is-dark {
+            background: var(--accent);
+        }
+
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+            transition: transform 0.25s ease;
+        }
+
+        .toggle-track.is-dark .toggle-thumb {
+            transform: translateX(16px);
+        }
+
+        .toggle-icons {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .toggle-label {
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .sidebar-footer-tag {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-align: center;
+            margin: 0.5rem 0 0;
+        }
+
+        .site-header {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            transition: background var(--transition-theme), border-color var(--transition-theme);
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 49;
+            backdrop-filter: blur(2px);
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        .comentario-item-excluir {
+            color: #ef4444;
+            text-decoration: none;
+            font-size: 0.75rem;
+            transition: color 0.2s ease;
+        }
+
+        .comentario-item-excluir:hover {
+            color: #dc2626;
+            text-decoration: underline;
+        }
+
+        @media (max-width: 767px) {
+            .sidebar {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 260px;
+                height: 100%;
+                z-index: 50;
+                flex-direction: column;
+            }
+            .sidebar.mobile-open {
+                display: flex !important;
+            }
+        }
+
+        .hidden { display: none; }
+        @media (min-width: 768px) {
+            .md\\:flex { display: flex !important; }
+            .md\\:ml-64 { margin-left: 260px; }
+            .md\\:hidden { display: none !important; }
+        }
+
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .flex-1 { flex: 1; }
+        .min-w-0 { min-width: 0; }
+        .sticky { position: sticky; }
+        .top-0 { top: 0; }
+        .z-30 { z-index: 30; }
+        .z-50 { z-index: 50; }
+        .fixed { position: fixed; }
+        .h-full { height: 100%; }
+        .w-64 { width: 260px; }
+        .overflow-y-auto { overflow-y: auto; }
+        .p-5 { padding: 1.25rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+        .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+        .mb-7 { margin-bottom: 1.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .mt-16 { margin-top: 4rem; }
+        .max-w-4xl { max-width: 900px; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
     </style>
 
     <script>
@@ -353,9 +676,11 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                             $foto_usuario = get_usuario_foto();
                             if ($foto_usuario): ?>
                                 <img src="../../uploads/<?= escape($foto_usuario) ?>" 
+                                     class="comentario-form-header avatar-img" 
                                      style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--border);">
                             <?php else: ?>
-                                <div style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.9rem; border:2px solid var(--border);">
+                                <div class="comentario-form-header avatar-fallback" 
+                                     style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.9rem; border:2px solid var(--border);">
                                     <?= get_avatar_initials(get_usuario_nome()) ?>
                                 </div>
                             <?php endif; ?>
@@ -370,7 +695,11 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                                       class="w-full px-4 py-3 rounded-lg resize-y"
                                       style="background:var(--bg-surface); border:1px solid var(--border);
                                              color:var(--text-primary); font-family:inherit; font-size:0.9rem;"
+                                      maxlength="1000"
                                       required></textarea>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.25rem;">
+                                <span style="font-size:0.7rem; color:var(--text-muted);">Máximo 1000 caracteres</span>
+                            </div>
                             <button type="submit"
                                     class="btn-primary mt-3 px-6 py-2 text-sm">
                                 Enviar Comentário
@@ -399,9 +728,11 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                                     <?php 
                                     if (!empty($comentario['foto'])): ?>
                                         <img src="../../uploads/<?= escape($comentario['foto']) ?>" 
-                                             class="avatar-img">
+                                             class="avatar-img" 
+                                             style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0;">
                                     <?php else: ?>
-                                        <div class="avatar-fallback">
+                                        <div class="avatar-fallback" 
+                                             style="width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.8rem; border:2px solid var(--border); flex-shrink:0;">
                                             <?= get_avatar_initials($comentario['nome']) ?>
                                         </div>
                                     <?php endif; ?>
@@ -418,12 +749,10 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                                             <?= nl2br(escape($comentario['conteudo'])) ?>
                                         </p>
                                         <?php if (usuario_logado() && get_usuario_id() == $comentario['usuario_id']): ?>
+                                            <!-- CORRIGIDO: Link absoluto para excluir comentário -->
                                             <a href="noticia.php?id=<?= $id ?>&excluir_comentario=<?= $comentario['id'] ?>"
                                                onclick="return confirm('Tem certeza que deseja excluir este comentário?')"
-                                               class="text-xs mt-1 inline-block transition"
-                                               style="color:#ef4444; text-decoration:none;"
-                                               onmouseover="this.style.color='#f87171'"
-                                               onmouseout="this.style.color='#ef4444'">
+                                               class="comentario-item-excluir">
                                                 Excluir
                                             </a>
                                         <?php endif; ?>

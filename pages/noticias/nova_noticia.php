@@ -39,10 +39,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <link rel="stylesheet" href="../../css/style.css">
 
     <style>
-        /* =====================================================
-           ESTILOS PARA NOVA NOTÍCIA
-           ===================================================== */
-
         * {
             margin: 0;
             padding: 0;
@@ -56,7 +52,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             min-height: 100vh;
         }
 
-        /* ── HEADER ──────────────────────────────────────────────── */
         .site-header {
             background: #1a1a2e;
             border-bottom: 1px solid #2a2a3e;
@@ -82,6 +77,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #7c3aed;
         }
 
+        .header-logo:hover {
+            color: #a78bfa;
+        }
+
         .btn-voltar {
             color: #9ca3af;
             font-size: 0.9rem;
@@ -93,7 +92,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             color: #ffffff;
         }
 
-        /* ── MAIN ────────────────────────────────────────────────── */
         .container {
             max-width: 900px;
             margin: 0 auto;
@@ -103,11 +101,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .titulo {
             font-size: 2rem;
             font-weight: 700;
-            margin-bottom: 2rem;
+            margin-bottom: 0.5rem;
             color: #ffffff;
         }
 
-        /* ── FORMULÁRIO ──────────────────────────────────────────── */
+        .subtitulo {
+            color: #9ca3af;
+            font-size: 1rem;
+            margin-bottom: 2rem;
+        }
+
         .form-card {
             background: #1a1a2e;
             border: 1px solid #2a2a3e;
@@ -211,7 +214,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             margin-top: 0.25rem;
         }
 
-        /* ── BOTÕES ──────────────────────────────────────────────── */
         .form-actions {
             display: flex;
             gap: 1rem;
@@ -253,7 +255,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             background: #3a3a4e;
         }
 
-        /* ── MENSAGEM DE ERRO ────────────────────────────────────── */
         .msg-erro {
             background: rgba(239, 68, 68, 0.1);
             border: 1px solid #ef4444;
@@ -264,7 +265,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             font-size: 0.9rem;
         }
 
-        /* ── RESPONSIVIDADE ────────────────────────────────────── */
         @media (max-width: 768px) {
             .form-card {
                 padding: 1rem;
@@ -305,11 +305,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 </head>
 <body>
 
-    <!-- ════════════════════════════════════════════════════
-         HEADER
-    ════════════════════════════════════════════════════ -->
     <header class="site-header">
         <div class="header-inner">
+            <!-- CORRIGIDO: Link para a página inicial -->
             <a href="../../index.php" class="header-logo">
                 🎮 <span>GG</span>News
             </a>
@@ -317,12 +315,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
     </header>
 
-    <!-- ════════════════════════════════════════════════════
-         MAIN
-    ════════════════════════════════════════════════════ -->
     <main class="container">
 
         <h1 class="titulo">📝 Publicar Nova Notícia</h1>
+        <p class="subtitulo">Compartilhe sua notícia com a comunidade</p>
 
         <?php if ($erro): ?>
             <div class="msg-erro"><?= escape($erro) ?></div>
@@ -330,7 +326,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <form method="POST" class="form-card">
 
-            <!-- TÍTULO -->
             <div class="form-group">
                 <label for="titulo" class="form-label">
                     Título da Notícia <span class="required">*</span>
@@ -342,7 +337,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        required>
             </div>
 
-            <!-- CATEGORIA -->
             <div class="form-group">
                 <label for="categoria_id" class="form-label">
                     Categoria <span class="required">*</span>
@@ -357,7 +351,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 </select>
             </div>
 
-            <!-- CONTEÚDO -->
             <div class="form-group">
                 <label for="noticia" class="form-label">
                     Conteúdo <span class="required">*</span>
@@ -368,7 +361,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                           required><?= escape($conteudo ?? '') ?></textarea>
             </div>
 
-            <!-- IMAGEM -->
             <div class="form-group">
                 <label for="imagem" class="form-label">URL da Imagem <span style="color:#4a4a5e;">(opcional)</span></label>
                 <input type="url" id="imagem" name="imagem"
@@ -378,7 +370,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <p class="form-hint">Cole a URL de uma imagem da internet ou deixe em branco.</p>
             </div>
 
-            <!-- BOTÕES -->
             <div class="form-actions">
                 <button type="submit" class="btn-primary">Publicar Notícia</button>
                 <a href="dashboard.php" class="btn-secondary">Cancelar</a>
