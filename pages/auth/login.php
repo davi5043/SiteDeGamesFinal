@@ -2,20 +2,18 @@
 // =====================================================
 // PÁGINA DE LOGIN
 // Arquivo: pages/auth/login.php
-// Descrição: Formulário de autenticação do usuário
 // =====================================================
 
 require_once __DIR__ . '/../../includes/funcoes.php';
 require_once __DIR__ . '/../../includes/conexao.php';
 
-// Se já está logado, redireciona para o dashboard
 if (usuario_logado()) {
-    redirecionar('pages/noticias/dashboard.php');
+    header("Location: " . BASE_URL);
+    exit;
 }
 
 $erro = '';
 
-// Processa o formulário quando enviado via POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email = trim($_POST['email'] ?? '');
     $senha = $_POST['senha'] ?? '';
@@ -23,20 +21,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (empty($email) || empty($senha)) {
         $erro = 'Preencha todos os campos.';
     } else {
-        // Busca o usuário pelo email no banco de dados
-        $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE email = ?");
-        $stmt->execute([$email]);
-        $usuario = $stmt->fetch();
+        try {
+            $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE email = ?");
+            $stmt->execute([$email]);
+            $usuario = $stmt->fetch();
 
-        // Verifica se o usuário existe e se a senha está correta
-        if ($usuario && password_verify($senha, $usuario['senha'])) {
-            $_SESSION['usuario_id'] = $usuario['id'];
-            $_SESSION['usuario_nome'] = $usuario['nome'];
+            if ($usuario && password_verify($senha, $usuario['senha'])) {
+                session_regenerate_id(true);
+                
+                $_SESSION['usuario_id'] = $usuario['id'];
+                $_SESSION['usuario_nome'] = $usuario['nome'];
+                $_SESSION['usuario_foto'] = $usuario['foto'] ?? null;
 
-            set_mensagem('sucesso', 'Bem-vindo de volta, ' . $usuario['nome'] . '!');
-            redirecionar('pages/noticias/dashboard.php');
-        } else {
-            $erro = 'Email ou senha incorretos.';
+                set_mensagem('sucesso', 'Bem-vindo de volta, ' . $usuario['nome'] . '!');
+                header("Location: " . BASE_URL);
+                exit;
+            } else {
+                $erro = 'Email ou senha incorretos.';
+            }
+        } catch (PDOException $e) {
+            $erro = 'Erro ao fazer login. Tente novamente.';
+            error_log("Erro no login: " . $e->getMessage());
         }
     }
 }
@@ -53,7 +58,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <body class="bg-[#0f0f0f] min-h-screen flex items-center justify-center px-4">
 
     <div class="w-full max-w-md">
-        <!-- Logo / Título -->
         <div class="text-center mb-8">
             <a href="<?= BASE_URL ?>" class="text-3xl font-bold text-white">
                 🎮 <span class="text-purple-500">GG</span>News
@@ -61,7 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <p class="text-gray-400 mt-2">Entre na sua conta</p>
         </div>
 
-        <!-- Card do formulário -->
         <div class="bg-[#1a1a2e] rounded-xl p-8 shadow-2xl border border-gray-800">
 
             <?php if ($erro): ?>

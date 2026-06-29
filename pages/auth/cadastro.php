@@ -2,20 +2,18 @@
 // =====================================================
 // PÁGINA DE CADASTRO
 // Arquivo: pages/auth/cadastro.php
-// Descrição: Formulário para criação de nova conta
 // =====================================================
 
 require_once __DIR__ . '/../../includes/funcoes.php';
 require_once __DIR__ . '/../../includes/conexao.php';
 
-// Se já está logado, redireciona para o dashboard
 if (usuario_logado()) {
-    redirecionar('pages/noticias/dashboard.php');
+    header("Location: " . BASE_URL);
+    exit;
 }
 
 $erro = '';
 
-// Processa o formulário quando enviado via POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nome = trim($_POST['nome'] ?? '');
     $email = trim($_POST['email'] ?? '');
@@ -31,22 +29,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($senha !== $confirmar_senha) {
         $erro = 'As senhas não coincidem.';
     } else {
-        // Verifica se o email já está cadastrado
-        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
-        $stmt->execute([$email]);
+        try {
+            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
+            $stmt->execute([$email]);
 
-        if ($stmt->fetch()) {
-            $erro = 'Este email já está cadastrado.';
-        } else {
-            // Criptografa a senha usando bcrypt
-            $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
+            if ($stmt->fetch()) {
+                $erro = 'Este email já está cadastrado.';
+            } else {
+                $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)");
+                $stmt->execute([$nome, $email, $senha_hash]);
 
-            // Insere o novo usuário no banco
-            $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)");
-            $stmt->execute([$nome, $email, $senha_hash]);
-
-            set_mensagem('sucesso', 'Conta criada com sucesso! Faça login.');
-            redirecionar('pages/auth/login.php');
+                set_mensagem('sucesso', 'Conta criada com sucesso! Faça login.');
+                header("Location: " . BASE_URL . "pages/auth/login.php");
+                exit;
+            }
+        } catch (PDOException $e) {
+            $erro = 'Erro ao cadastrar. Tente novamente.';
+            error_log("Erro no cadastro: " . $e->getMessage());
         }
     }
 }

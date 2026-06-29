@@ -7,5 +7,6 @@ require_once __DIR__ . '/funcoes.php';
 
 if (!usuario_logado()) {
     set_mensagem('erro', 'Você precisa estar logado para acessar esta página.');
-    redirecionar('pages/auth/login.php');
+    header("Location: " . BASE_URL . "pages/auth/login.php");
+    exit;
 }

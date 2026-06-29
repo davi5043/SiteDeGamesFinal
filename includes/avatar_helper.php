@@ -2,9 +2,6 @@
 // =====================================================
 // HELPER: Avatar do usuário
 // Arquivo: includes/avatar_helper.php
-// Uso: include uma vez no topo da página após funcoes.php
-//      Chame get_avatar_url($usuario) para obter a URL
-//      Chame render_avatar($usuario, $size) para o HTML
 // =====================================================
 
 /**
