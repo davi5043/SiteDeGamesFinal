@@ -16,8 +16,48 @@ if ($id <= 0) {
     exit;
 }
 
+// ══════════════════════════════════════════════════════
+// PROCESSAR LIKE (responde JSON — sem reload)
+// ══════════════════════════════════════════════════════
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'like') {
+    header('Content-Type: application/json');
+
+    if (!usuario_logado()) {
+        echo json_encode(['erro' => 'Login necessário']);
+        exit;
+    }
+
+    $uid = get_usuario_id();
+
+    // Verifica se já curtiu
+    $chk = $pdo->prepare("SELECT id FROM likes WHERE noticia_id = ? AND usuario_id = ?");
+    $chk->execute([$id, $uid]);
+    $ja_curtiu = $chk->fetch();
+
+    if ($ja_curtiu) {
+        // Remove o like
+        $pdo->prepare("DELETE FROM likes WHERE noticia_id = ? AND usuario_id = ?")->execute([$id, $uid]);
+        $liked = false;
+    } else {
+        // Adiciona o like
+        $pdo->prepare("INSERT IGNORE INTO likes (noticia_id, usuario_id) VALUES (?, ?)")->execute([$id, $uid]);
+        $liked = true;
+    }
+
+    // Conta total atualizado
+    $cnt = $pdo->prepare("SELECT COUNT(*) FROM likes WHERE noticia_id = ?");
+    $cnt->execute([$id]);
+    $total = (int) $cnt->fetchColumn();
+
+    echo json_encode(['liked' => $liked, 'total' => $total]);
+    exit;
+}
+
+// ══════════════════════════════════════════════════════
+// BUSCA NOTÍCIA
+// ══════════════════════════════════════════════════════
 $stmt = $pdo->prepare("
-    SELECT n.*, u.nome AS autor_nome, u.foto AS autor_foto, 
+    SELECT n.*, u.nome AS autor_nome, u.foto AS autor_foto,
            c.nome AS categoria_nome, c.icone AS categoria_icone
     FROM noticias n
     INNER JOIN usuarios u ON n.autor = u.id
@@ -37,6 +77,18 @@ $categorias = get_categorias($pdo);
 $comentarios = get_comentarios($pdo, $id);
 $total_comentarios = contar_comentarios($pdo, $id);
 
+// ── Dados de like ──────────────────────────────────────
+$stmt_likes = $pdo->prepare("SELECT COUNT(*) FROM likes WHERE noticia_id = ?");
+$stmt_likes->execute([$id]);
+$total_likes = (int) $stmt_likes->fetchColumn();
+
+$usuario_ja_curtiu = false;
+if (usuario_logado()) {
+    $stmt_meu = $pdo->prepare("SELECT id FROM likes WHERE noticia_id = ? AND usuario_id = ?");
+    $stmt_meu->execute([$id, get_usuario_id()]);
+    $usuario_ja_curtiu = (bool) $stmt_meu->fetch();
+}
+
 $usuario_logado = null;
 if (usuario_logado()) {
     $usuario_logado = [
@@ -45,11 +97,13 @@ if (usuario_logado()) {
     ];
 }
 
-// Processar novo comentário
+// ══════════════════════════════════════════════════════
+// PROCESSAR COMENTÁRIO
+// ══════════════════════════════════════════════════════
 $erro_comentario = '';
 $sucesso_comentario = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'comentar') {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['acao'] ?? '') === 'comentar') {
     if (!usuario_logado()) {
         $erro_comentario = 'Você precisa estar logado para comentar.';
     } else {
@@ -72,24 +126,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
     }
 }
 
-// Processar exclusão de comentário - CORRIGIDO
+// ── Excluir comentário ──────────────────────────────────
 if (isset($_GET['excluir_comentario']) && usuario_logado()) {
     $comentario_id = intval($_GET['excluir_comentario']);
-    
-    // Verifica se o comentário existe e pertence ao usuário
+
     $stmt = $pdo->prepare("SELECT id FROM comentarios WHERE id = ? AND usuario_id = ?");
     $stmt->execute([$comentario_id, get_usuario_id()]);
-    $comentario_existe = $stmt->fetch();
-    
-    if ($comentario_existe) {
-        $stmt = $pdo->prepare("DELETE FROM comentarios WHERE id = ? AND usuario_id = ?");
-        $stmt->execute([$comentario_id, get_usuario_id()]);
+    if ($stmt->fetch()) {
+        $pdo->prepare("DELETE FROM comentarios WHERE id = ? AND usuario_id = ?")->execute([$comentario_id, get_usuario_id()]);
         set_mensagem('sucesso', 'Comentário excluído com sucesso.');
     } else {
         set_mensagem('erro', 'Você não tem permissão para excluir este comentário.');
     }
-    
-    // Redireciona para a mesma página
+
     header("Location: noticia.php?id=" . $id);
     exit;
 }
@@ -104,95 +153,71 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
     <link rel="stylesheet" href="../../css/style.css">
 
     <style>
-        .comentario-item-header {
+        /* =====================================================
+           ESTILOS DA PÁGINA DE NOTÍCIA
+           ===================================================== */
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f8f4f0;
+            color: #1a1a1a;
+            min-height: 100vh;
             display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
         }
 
-        .comentario-item-header .avatar-img {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--border);
-            flex-shrink: 0;
+        [data-theme="dark"] body {
+            background: #0c0c10;
+            color: #eeeaf8;
         }
 
-        .comentario-item-header .avatar-fallback {
-            width: 36px;
-            height: 36px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--accent-light);
-            color: var(--accent-text);
-            font-weight: 700;
-            font-size: 0.8rem;
-            border: 2px solid var(--border);
-            flex-shrink: 0;
-        }
-
-        .comentario-form-header .avatar-img {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--border);
-        }
-
-        .comentario-form-header .avatar-fallback {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--accent-light);
-            color: var(--accent-text);
-            font-weight: 700;
-            font-size: 0.9rem;
-            border: 2px solid var(--border);
-        }
-
-        .badge-cat {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.35rem;
-            background: var(--accent-light);
-            color: var(--accent-text);
-            padding: 0.2rem 0.75rem;
-            border-radius: 99px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
-
-        .btn-primary {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--accent);
-            color: #fff;
-            padding: 0.5rem 1.1rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 600;
-            border: none;
-            cursor: pointer;
-            text-decoration: none;
-            transition: background 0.2s ease;
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-hover);
-        }
-
+        /* ── SIDEBAR ─────────────────────────────────────────────── */
         .sidebar {
-            background: var(--bg-sidebar);
-            border-right: 1px solid var(--border);
-            box-shadow: var(--shadow-lg);
-            transition: background var(--transition-theme), border-color var(--transition-theme), transform 0.3s ease;
+            width: 260px;
+            background: #ffffff;
+            border-right: 1px solid #e8e2da;
+            padding: 1.25rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+        }
+
+        [data-theme="dark"] .sidebar {
+            background: #101015;
+            border-color: #252535;
+        }
+
+        @media (min-width: 768px) {
+            .sidebar {
+                display: flex !important;
+            }
+        }
+
+        .sidebar.mobile-open {
+            display: flex !important;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 49;
+            backdrop-filter: blur(2px);
+        }
+
+        .sidebar-overlay.active {
+            display: block;
         }
 
         .sidebar-logo {
@@ -200,13 +225,13 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             align-items: center;
             gap: 0.75rem;
             text-decoration: none;
-            padding: 0.25rem 0.25rem 0.5rem;
+            margin-bottom: 1.75rem;
         }
 
         .logo-icon {
             width: 38px;
             height: 38px;
-            background: var(--accent-light);
+            background: #ede9fe;
             border-radius: 10px;
             display: flex;
             align-items: center;
@@ -215,23 +240,35 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             flex-shrink: 0;
         }
 
+        [data-theme="dark"] .logo-icon {
+            background: #1c1831;
+        }
+
         .logo-text {
             font-family: 'Syne', sans-serif;
             font-size: 1.15rem;
             font-weight: 800;
-            color: var(--text-primary);
+            color: #1a1a1a;
             line-height: 1.1;
         }
 
+        [data-theme="dark"] .logo-text {
+            color: #eeeaf8;
+        }
+
         .logo-text span {
-            color: var(--accent);
+            color: #7c3aed;
         }
 
         .logo-tag {
             font-size: 0.68rem;
             font-weight: 500;
-            color: var(--text-muted);
+            color: #9ca3af;
             letter-spacing: 0.02em;
+        }
+
+        [data-theme="dark"] .logo-tag {
+            color: #5e5c76;
         }
 
         .sidebar-section-label {
@@ -239,11 +276,16 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
-            color: var(--text-muted);
+            color: #9ca3af;
             padding: 0.75rem 0.75rem 0.35rem;
         }
 
-        .sidebar-nav, .sidebar-categories {
+        [data-theme="dark"] .sidebar-section-label {
+            color: #5e5c76;
+        }
+
+        .sidebar-nav,
+        .sidebar-categories {
             display: flex;
             flex-direction: column;
             gap: 0.15rem;
@@ -257,21 +299,35 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             border-radius: 0.75rem;
             font-size: 0.875rem;
             font-weight: 500;
-            color: var(--text-secondary);
+            color: #5f6378;
             text-decoration: none;
             position: relative;
-            transition: background 0.18s ease, color 0.18s ease;
+            transition: all 0.18s ease;
+        }
+
+        [data-theme="dark"] .nav-link {
+            color: #918fac;
         }
 
         .nav-link:hover {
-            background: var(--bg-elevated);
-            color: var(--text-primary);
+            background: #f8f4f0;
+            color: #1a1a1a;
+        }
+
+        [data-theme="dark"] .nav-link:hover {
+            background: #1a1a22;
+            color: #eeeaf8;
         }
 
         .nav-link.active {
-            background: var(--accent-light);
-            color: var(--accent);
+            background: #ede9fe;
+            color: #7c3aed;
             font-weight: 600;
+        }
+
+        [data-theme="dark"] .nav-link.active {
+            background: #1c1831;
+            color: #a78bfa;
         }
 
         .nav-link.active::before {
@@ -281,7 +337,7 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             top: 18%;
             height: 64%;
             width: 3px;
-            background: var(--accent);
+            background: #7c3aed;
             border-radius: 0 3px 3px 0;
         }
 
@@ -289,12 +345,16 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             width: 28px;
             height: 28px;
             border-radius: 7px;
-            background: var(--bg-elevated);
+            background: #f8f4f0;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 0.85rem;
             flex-shrink: 0;
+        }
+
+        [data-theme="dark"] .nav-icon {
+            background: #1a1a22;
         }
 
         .cat-icon {
@@ -313,10 +373,18 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             color: #dc2626 !important;
         }
 
+        [data-theme="dark"] .nav-link-danger:hover {
+            background: #2d0a0a !important;
+        }
+
         .theme-toggle-wrap {
             padding-top: 0.75rem;
-            border-top: 1px solid var(--border);
+            border-top: 1px solid #e8e2da;
             margin-top: auto;
+        }
+
+        [data-theme="dark"] .theme-toggle-wrap {
+            border-color: #252535;
         }
 
         .theme-toggle-btn {
@@ -334,21 +402,25 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
         }
 
         .theme-toggle-btn:hover {
-            background: var(--bg-elevated);
+            background: #f8f4f0;
+        }
+
+        [data-theme="dark"] .theme-toggle-btn:hover {
+            background: #1a1a22;
         }
 
         .toggle-track {
             position: relative;
             width: 38px;
             height: 22px;
-            background: var(--border);
+            background: #e8e2da;
             border-radius: 99px;
             flex-shrink: 0;
             transition: background 0.25s ease;
         }
 
-        .toggle-track.is-dark {
-            background: var(--accent);
+        [data-theme="dark"] .toggle-track {
+            background: #7c3aed;
         }
 
         .toggle-thumb {
@@ -363,7 +435,7 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             transition: transform 0.25s ease;
         }
 
-        .toggle-track.is-dark .toggle-thumb {
+        [data-theme="dark"] .toggle-thumb {
             transform: translateX(16px);
         }
 
@@ -375,33 +447,330 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
         .toggle-label {
             font-size: 0.82rem;
             font-weight: 500;
-            color: var(--text-secondary);
+            color: #5f6378;
+        }
+
+        [data-theme="dark"] .toggle-label {
+            color: #918fac;
         }
 
         .sidebar-footer-tag {
             font-size: 0.7rem;
-            color: var(--text-muted);
+            color: #9ca3af;
             text-align: center;
             margin: 0.5rem 0 0;
         }
 
+        [data-theme="dark"] .sidebar-footer-tag {
+            color: #5e5c76;
+        }
+
+        /* ── MAIN CONTENT ────────────────────────────────────────── */
+        .main-content {
+            flex: 1;
+            margin-left: 0;
+            min-width: 0;
+        }
+
+        @media (min-width: 768px) {
+            .main-content {
+                margin-left: 260px;
+            }
+        }
+
+        /* ── HEADER ────────────────────────────────────────────────── */
         .site-header {
-            background: var(--bg-surface);
-            border-bottom: 1px solid var(--border);
-            transition: background var(--transition-theme), border-color var(--transition-theme);
+            background: #ffffff;
+            border-bottom: 1px solid #e8e2da;
+            padding: 0.75rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 30;
         }
 
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.4);
-            z-index: 49;
-            backdrop-filter: blur(2px);
+        [data-theme="dark"] .site-header {
+            background: #121218;
+            border-color: #252535;
         }
 
-        .sidebar-overlay.active {
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .menu-toggle {
+            font-size: 1.5rem;
+            background: transparent;
+            border: none;
+            color: #1a1a1a;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 0.5rem;
             display: block;
+        }
+
+        [data-theme="dark"] .menu-toggle {
+            color: #eeeaf8;
+        }
+
+        @media (min-width: 768px) {
+            .menu-toggle {
+                display: none;
+            }
+        }
+
+        .header-logo-mobile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            text-decoration: none;
+        }
+
+        [data-theme="dark"] .header-logo-mobile {
+            color: #eeeaf8;
+        }
+
+        .header-logo-mobile span {
+            color: #7c3aed;
+        }
+
+        @media (min-width: 768px) {
+            .header-logo-mobile {
+                display: none;
+            }
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-nav .avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e8e2da;
+        }
+
+        [data-theme="dark"] .header-nav .avatar {
+            border-color: #252535;
+        }
+
+        .header-nav .avatar-fallback {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ede9fe;
+            color: #5b21b6;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: 2px solid #e8e2da;
+        }
+
+        [data-theme="dark"] .header-nav .avatar-fallback {
+            background: #1c1831;
+            color: #c4b5fd;
+            border-color: #252535;
+        }
+
+        .header-nav .nome {
+            color: #5f6378;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        @media (min-width: 640px) {
+            .header-nav .nome {
+                display: inline;
+            }
+        }
+
+        [data-theme="dark"] .header-nav .nome {
+            color: #918fac;
+        }
+
+        .btn-primary {
+            background: #7c3aed;
+            color: #fff;
+            padding: 0.4rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: #6d28d9;
+        }
+
+        .btn-sair {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .btn-sair:hover {
+            color: #ef4444;
+        }
+
+        [data-theme="dark"] .btn-sair {
+            color: #5e5c76;
+        }
+
+        /* ── BADGE ────────────────────────────────────────────────── */
+        .badge-cat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: #ede9fe;
+            color: #5b21b6;
+            padding: 0.2rem 0.75rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .badge-cat {
+            background: #1c1831;
+            color: #c4b5fd;
+        }
+
+        /* ── BOTÃO DE LIKE ───────────────────────────────────────── */
+        .btn-like {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.55rem 1.25rem;
+            border-radius: 99px;
+            border: 2px solid #e8e2da;
+            background: #ffffff;
+            color: #5f6378;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            user-select: none;
+        }
+
+        [data-theme="dark"] .btn-like {
+            background: #121218;
+            border-color: #252535;
+            color: #918fac;
+        }
+
+        .btn-like:hover {
+            border-color: #ef4444;
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.06);
+            transform: scale(1.04);
+        }
+
+        [data-theme="dark"] .btn-like:hover {
+            background: rgba(239, 68, 68, 0.12);
+        }
+
+        .btn-like.curtido {
+            border-color: #ef4444;
+            background: rgba(239, 68, 68, 0.10);
+            color: #ef4444;
+        }
+
+        [data-theme="dark"] .btn-like.curtido {
+            background: rgba(239, 68, 68, 0.15);
+            color: #f87171;
+            border-color: #f87171;
+        }
+
+        .btn-like .heart-icon {
+            display: inline-block;
+            transition: transform 0.1s;
+        }
+
+        .btn-like.animating .heart-icon {
+            animation: heartBeat 0.4s ease;
+        }
+
+        @keyframes heartBeat {
+            0%   { transform: scale(1); }
+            30%  { transform: scale(1.35); }
+            60%  { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+
+        .like-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .like-tooltip {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1a1a1a;
+            color: #ffffff;
+            font-size: 0.72rem;
+            font-weight: 500;
+            padding: 0.35rem 0.75rem;
+            border-radius: 0.4rem;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        [data-theme="dark"] .like-tooltip {
+            background: #eeeaf8;
+            color: #1a1a1a;
+        }
+
+        .like-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #1a1a1a;
+        }
+
+        [data-theme="dark"] .like-tooltip::after {
+            border-top-color: #eeeaf8;
+        }
+
+        .btn-like:focus + .like-tooltip,
+        .btn-like:hover + .like-tooltip {
+            opacity: 1;
+        }
+
+        /* ── COMENTÁRIOS ──────────────────────────────────────────── */
+        .comentario-item-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
         }
 
         .comentario-item-excluir {
@@ -416,50 +785,57 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             text-decoration: underline;
         }
 
-        @media (max-width: 767px) {
-            .sidebar {
-                display: none;
-                position: fixed;
-                top: 0;
-                left: 0;
-                width: 260px;
-                height: 100%;
-                z-index: 50;
-                flex-direction: column;
+        /* ── FOOTER ────────────────────────────────────────────────── */
+        .site-footer {
+            margin-top: 4rem;
+            border-top: 1px solid #e8e2da;
+            background: #ffffff;
+            padding: 2rem 1rem;
+            text-align: center;
+        }
+
+        [data-theme="dark"] .site-footer {
+            background: #121218;
+            border-color: #252535;
+        }
+
+        .site-footer p {
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+
+        [data-theme="dark"] .site-footer p {
+            color: #5e5c76;
+        }
+
+        .site-footer span {
+            color: #7c3aed;
+            font-weight: 700;
+        }
+
+        /* ── RESPONSIVIDADE ───────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .btn-like {
+                padding: 0.4rem 1rem;
+                font-size: 0.8rem;
             }
-            .sidebar.mobile-open {
-                display: flex !important;
+
+            .like-wrap {
+                gap: 0.5rem;
             }
         }
 
-        .hidden { display: none; }
-        @media (min-width: 768px) {
-            .md\\:flex { display: flex !important; }
-            .md\\:ml-64 { margin-left: 260px; }
-            .md\\:hidden { display: none !important; }
-        }
+        @media (max-width: 480px) {
+            .btn-like {
+                padding: 0.35rem 0.8rem;
+                font-size: 0.75rem;
+            }
 
-        .flex { display: flex; }
-        .flex-col { flex-direction: column; }
-        .flex-1 { flex: 1; }
-        .min-w-0 { min-width: 0; }
-        .sticky { position: sticky; }
-        .top-0 { top: 0; }
-        .z-30 { z-index: 30; }
-        .z-50 { z-index: 50; }
-        .fixed { position: fixed; }
-        .h-full { height: 100%; }
-        .w-64 { width: 260px; }
-        .overflow-y-auto { overflow-y: auto; }
-        .p-5 { padding: 1.25rem; }
-        .px-4 { padding-left: 1rem; padding-right: 1rem; }
-        .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
-        .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
-        .mb-7 { margin-bottom: 1.75rem; }
-        .mb-4 { margin-bottom: 1rem; }
-        .mt-16 { margin-top: 4rem; }
-        .max-w-4xl { max-width: 900px; }
-        .mx-auto { margin-left: auto; margin-right: auto; }
+            .like-tooltip {
+                font-size: 0.65rem;
+                padding: 0.25rem 0.5rem;
+            }
+        }
     </style>
 
     <script>
@@ -469,13 +845,15 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
         })();
     </script>
 </head>
-<body class="min-h-screen flex">
+<body>
 
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-    <aside id="sidebar" class="sidebar w-64 fixed h-full z-50 flex-col p-5 overflow-y-auto hidden md:flex">
-
-        <div class="mb-7">
+    <!-- ══════════════════════════════════════════════════════
+         SIDEBAR
+    ══════════════════════════════════════════════════════ -->
+    <aside id="sidebar" class="sidebar">
+        <div>
             <a href="../../index.php" class="sidebar-logo">
                 <div class="logo-icon">🎮</div>
                 <div>
@@ -486,7 +864,7 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
         </div>
 
         <div class="sidebar-section-label">Menu</div>
-        <nav class="sidebar-nav mb-4">
+        <nav class="sidebar-nav">
             <a href="../../index.php" class="nav-link">
                 <span class="nav-icon">🏠</span>
                 Início
@@ -495,7 +873,6 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                 <span class="nav-icon">📋</span>
                 Painel
             </a>
-
             <?php if (usuario_logado()): ?>
                 <a href="../../pages/usuario/editar_usuario.php" class="nav-link">
                     <span class="nav-icon">👤</span>
@@ -519,7 +896,7 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
 
         <?php if (!empty($categorias)): ?>
         <div class="sidebar-section-label">Categorias</div>
-        <nav class="sidebar-categories mb-4">
+        <nav class="sidebar-categories">
             <?php foreach ($categorias as $cat): ?>
                 <a href="../../pages/categorias/categoria.php?slug=<?= $cat['slug'] ?>"
                    class="nav-link <?= ($noticia['categoria_nome'] ?? '') === $cat['nome'] ? 'active' : '' ?>">
@@ -540,73 +917,50 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
             </button>
             <p class="sidebar-footer-tag">GGNews &copy; <?= date('Y') ?></p>
         </div>
-
     </aside>
 
-    <div class="flex-1 md:ml-64 min-w-0">
+    <!-- ══════════════════════════════════════════════════════
+         CONTEÚDO PRINCIPAL
+    ══════════════════════════════════════════════════════ -->
+    <div class="main-content">
 
-        <header class="site-header sticky top-0 z-30 px-4 py-3">
-            <div class="max-w-4xl mx-auto flex items-center justify-between">
-
-                <div class="flex items-center gap-3">
-                    <button id="menu-toggle"
-                            class="md:hidden text-2xl p-1.5 rounded-lg transition"
-                            style="color:var(--text-primary); background:transparent;"
-                            aria-label="Abrir menu"
-                            aria-expanded="false"
-                            aria-controls="sidebar">
-                        ☰
-                    </button>
-                    <a href="../../index.php" class="flex items-center gap-2 md:hidden text-lg font-bold"
-                       style="color:var(--text-primary); text-decoration:none;">
-                        🎮 <span style="color:var(--accent)">GG</span>News
+        <header class="site-header">
+            <div class="header-inner">
+                <div class="header-left">
+                    <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menu">☰</button>
+                    <a href="../../index.php" class="header-logo-mobile">
+                        🎮 <span>GG</span>News
                     </a>
                 </div>
-
-                <nav class="flex items-center gap-3">
+                <nav class="header-nav">
                     <?php if (usuario_logado()): ?>
-                        <div class="flex items-center gap-2">
-                            <?php 
-                            $foto_usuario = get_usuario_foto();
-                            if ($foto_usuario): ?>
-                                <img src="../../uploads/<?= escape($foto_usuario) ?>" 
-                                     class="avatar" 
-                                     style="width:32px; height:32px; border-radius:50%; object-fit:cover; border:2px solid var(--border);">
-                            <?php else: ?>
-                                <div class="avatar-fallback" 
-                                     style="width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.8rem; border:2px solid var(--border);">
-                                    <?= get_avatar_initials(get_usuario_nome()) ?>
-                                </div>
-                            <?php endif; ?>
-                            <span class="hidden sm:inline text-sm" style="color:var(--text-secondary)">
-                                Olá, <?= escape(get_usuario_nome()) ?>
-                            </span>
-                        </div>
-                        <a href="../../pages/noticias/dashboard.php" class="btn-primary text-sm px-4 py-2">
-                            Painel
-                        </a>
-                        <a href="../../pages/auth/logout.php"
-                           style="color:var(--text-muted); font-size:.875rem; text-decoration:none;">Sair</a>
+                        <?php $foto_usuario = get_usuario_foto(); ?>
+                        <?php if ($foto_usuario): ?>
+                            <img src="../../uploads/<?= escape($foto_usuario) ?>" class="avatar" alt="Avatar">
+                        <?php else: ?>
+                            <div class="avatar-fallback"><?= get_avatar_initials(get_usuario_nome()) ?></div>
+                        <?php endif; ?>
+                        <span class="nome">Olá, <?= escape(get_usuario_nome()) ?></span>
+                        <a href="../../pages/noticias/dashboard.php" class="btn-primary">Painel</a>
+                        <a href="../../pages/auth/logout.php" class="btn-sair">Sair</a>
                     <?php else: ?>
-                        <a href="../../pages/auth/login.php"
-                           style="color:var(--text-secondary); font-size:.875rem; text-decoration:none;">Login</a>
-                        <a href="../../pages/auth/cadastro.php" class="btn-primary text-sm px-4 py-2">
-                            Cadastrar
-                        </a>
+                        <a href="../../pages/auth/login.php" class="btn-sair" style="color:#7c3aed;">Login</a>
+                        <a href="../../pages/auth/cadastro.php" class="btn-primary">Cadastrar</a>
                     <?php endif; ?>
                 </nav>
-
             </div>
         </header>
 
         <main class="max-w-4xl mx-auto px-4 py-8">
 
+            <!-- VOLTAR -->
             <a href="../../index.php"
                class="inline-flex items-center gap-1 text-sm mb-6 transition"
                style="color:var(--accent); text-decoration:none;">
                 ← Voltar para as notícias
             </a>
 
+            <!-- IMAGEM DESTAQUE -->
             <?php if ($noticia['imagem']): ?>
                 <div class="rounded-2xl overflow-hidden mb-8 h-[400px]">
                     <img src="<?= escape($noticia['imagem']) ?>"
@@ -615,30 +969,70 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                 </div>
             <?php endif; ?>
 
+            <!-- TÍTULO -->
             <h1 class="text-3xl md:text-4xl font-bold leading-tight"
                 style="color:var(--text-primary)">
                 <?= escape($noticia['titulo']) ?>
             </h1>
 
-            <div class="flex flex-wrap items-center gap-4 mt-4 text-sm pb-6 mb-8"
+            <!-- META + LIKE -->
+            <div class="flex flex-wrap items-center justify-between gap-4 mt-4 pb-6 mb-8"
                  style="border-bottom: 1px solid var(--border);">
-                <span class="badge-cat">
-                    <?= $noticia['categoria_icone'] ?? '📰' ?>
-                    <?= escape($noticia['categoria_nome'] ?? 'Games & E-Sports') ?>
-                </span>
-                <span style="color:var(--text-secondary)">
-                    Por <strong style="color:var(--text-primary)"><?= escape($noticia['autor_nome']) ?></strong>
-                </span>
-                <span style="color:var(--text-muted)">•</span>
-                <span style="color:var(--text-muted)"><?= formatar_data($noticia['data']) ?></span>
+
+                <!-- Categoria / Autor / Data -->
+                <div class="flex flex-wrap items-center gap-3 text-sm">
+                    <span class="badge-cat">
+                        <?= $noticia['categoria_icone'] ?? '📰' ?>
+                        <?= escape($noticia['categoria_nome'] ?? 'Games & E-Sports') ?>
+                    </span>
+                    <span style="color:var(--text-secondary)">
+                        Por <strong style="color:var(--text-primary)"><?= escape($noticia['autor_nome']) ?></strong>
+                    </span>
+                    <span style="color:var(--text-muted)">•</span>
+                    <span style="color:var(--text-muted)"><?= formatar_data($noticia['data']) ?></span>
+                </div>
+
+                <!-- BOTÃO DE LIKE -->
+                <div class="like-wrap">
+                    <button id="btn-like"
+                            class="btn-like <?= $usuario_ja_curtiu ? 'curtido' : '' ?>"
+                            data-noticia="<?= $id ?>"
+                            data-logado="<?= usuario_logado() ? '1' : '0' ?>"
+                            aria-label="Curtir notícia"
+                            aria-pressed="<?= $usuario_ja_curtiu ? 'true' : 'false' ?>">
+                        <span class="heart-icon"><?= $usuario_ja_curtiu ? '❤️' : '🤍' ?></span>
+                        <span id="like-count"><?= $total_likes ?></span>
+                        <span id="like-label"><?= $usuario_ja_curtiu ? 'Curtido' : 'Curtir' ?></span>
+                    </button>
+                    <?php if (!usuario_logado()): ?>
+                        <span class="like-tooltip">Faça login para curtir</span>
+                    <?php endif; ?>
+                </div>
+
             </div>
 
+            <!-- CORPO DO ARTIGO -->
             <article class="text-lg leading-relaxed whitespace-pre-line"
                      style="color:var(--text-secondary)">
                 <?= escape($noticia['noticia']) ?>
             </article>
 
-            <!-- SEÇÃO DE COMENTÁRIOS -->
+            <!-- LIKE EMBAIXO DO ARTIGO -->
+            <div class="flex items-center gap-3 mt-10 pt-6" style="border-top:1px solid var(--border);">
+                <span style="font-size:0.9rem; color:var(--text-muted);">Gostou desta notícia?</span>
+                <button class="btn-like-mirror btn-like <?= $usuario_ja_curtiu ? 'curtido' : '' ?>"
+                        data-noticia="<?= $id ?>"
+                        data-logado="<?= usuario_logado() ? '1' : '0' ?>"
+                        aria-label="Curtir notícia">
+                    <span class="heart-icon"><?= $usuario_ja_curtiu ? '❤️' : '🤍' ?></span>
+                    <span class="mirror-count"><?= $total_likes ?></span>
+                    <span class="mirror-label"><?= $usuario_ja_curtiu ? 'Curtido' : 'Curtir' ?></span>
+                </button>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════
+                 SEÇÃO DE COMENTÁRIOS
+            ══════════════════════════════════════════════════════ -->
             <section class="mt-12 pt-8" style="border-top: 1px solid var(--border);">
 
                 <h3 class="text-2xl font-bold mb-6" style="color:var(--text-primary)">
@@ -672,15 +1066,11 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                 <?php if (usuario_logado()): ?>
                     <div class="mb-8 p-6 rounded-xl" style="background:var(--bg-elevated); border:1px solid var(--border);">
                         <div class="flex items-center gap-3 mb-3">
-                            <?php 
-                            $foto_usuario = get_usuario_foto();
-                            if ($foto_usuario): ?>
-                                <img src="../../uploads/<?= escape($foto_usuario) ?>" 
-                                     class="comentario-form-header avatar-img" 
-                                     style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--border);">
+                            <?php $foto_usuario = get_usuario_foto(); if ($foto_usuario): ?>
+                                <img src="../../uploads/<?= escape($foto_usuario) ?>"
+                                     style="width:40px;height:40px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">
                             <?php else: ?>
-                                <div class="comentario-form-header avatar-fallback" 
-                                     style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.9rem; border:2px solid var(--border);">
+                                <div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent-light);color:var(--accent-text);font-weight:700;font-size:0.9rem;border:2px solid var(--border);">
                                     <?= get_avatar_initials(get_usuario_nome()) ?>
                                 </div>
                             <?php endif; ?>
@@ -700,16 +1090,17 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                             <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.25rem;">
                                 <span style="font-size:0.7rem; color:var(--text-muted);">Máximo 1000 caracteres</span>
                             </div>
-                            <button type="submit"
-                                    class="btn-primary mt-3 px-6 py-2 text-sm">
+                            <button type="submit" class="btn-primary mt-3 px-6 py-2 text-sm">
                                 Enviar Comentário
                             </button>
                         </form>
                     </div>
                 <?php else: ?>
-                    <div class="text-center p-8 rounded-xl mb-8" style="background:var(--bg-elevated); border:1px solid var(--border);">
+                    <div class="text-center p-8 rounded-xl mb-8"
+                         style="background:var(--bg-elevated); border:1px solid var(--border);">
                         <p style="color:var(--text-secondary);">
-                            🔒 Faça <a href="../../pages/auth/login.php" style="color:var(--accent); font-weight:600; text-decoration:none;">login</a>
+                            🔒 Faça <a href="../../pages/auth/login.php"
+                                       style="color:var(--accent); font-weight:600; text-decoration:none;">login</a>
                             para comentar e interagir com a comunidade.
                         </p>
                     </div>
@@ -723,16 +1114,14 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                 <?php else: ?>
                     <div class="space-y-4">
                         <?php foreach ($comentarios as $comentario): ?>
-                            <div class="p-4 rounded-xl" style="background:var(--bg-elevated); border:1px solid var(--border);">
+                            <div class="p-4 rounded-xl"
+                                 style="background:var(--bg-elevated); border:1px solid var(--border);">
                                 <div class="comentario-item-header">
-                                    <?php 
-                                    if (!empty($comentario['foto'])): ?>
-                                        <img src="../../uploads/<?= escape($comentario['foto']) ?>" 
-                                             class="avatar-img" 
-                                             style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0;">
+                                    <?php if (!empty($comentario['foto'])): ?>
+                                        <img src="../../uploads/<?= escape($comentario['foto']) ?>"
+                                             style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid var(--border);flex-shrink:0;">
                                     <?php else: ?>
-                                        <div class="avatar-fallback" 
-                                             style="width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.8rem; border:2px solid var(--border); flex-shrink:0;">
+                                        <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent-light);color:var(--accent-text);font-weight:700;font-size:0.8rem;border:2px solid var(--border);flex-shrink:0;">
                                             <?= get_avatar_initials($comentario['nome']) ?>
                                         </div>
                                     <?php endif; ?>
@@ -749,7 +1138,6 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                                             <?= nl2br(escape($comentario['conteudo'])) ?>
                                         </p>
                                         <?php if (usuario_logado() && get_usuario_id() == $comentario['usuario_id']): ?>
-                                            <!-- CORRIGIDO: Link absoluto para excluir comentário -->
                                             <a href="noticia.php?id=<?= $id ?>&excluir_comentario=<?= $comentario['id'] ?>"
                                                onclick="return confirm('Tem certeza que deseja excluir este comentário?')"
                                                class="comentario-item-excluir">
@@ -765,6 +1153,7 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
 
             </section>
 
+            <!-- RODAPÉ DO ARTIGO -->
             <div class="mt-12 pt-6 flex items-center justify-between flex-wrap gap-4"
                  style="border-top: 1px solid var(--border);">
                 <a href="../../index.php"
@@ -772,9 +1161,8 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                    style="color:var(--accent); text-decoration:none;">
                     ← Todas as notícias
                 </a>
-                <?php if (usuario_logado()): ?>
-                    <a href="editar_noticia.php?id=<?= $noticia['id'] ?>"
-                       class="btn-primary text-sm px-4 py-2">
+                <?php if (usuario_logado() && $noticia['autor'] == get_usuario_id()): ?>
+                    <a href="editar_noticia.php?id=<?= $noticia['id'] ?>" class="btn-primary text-sm px-4 py-2">
                         Editar notícia
                     </a>
                 <?php endif; ?>
@@ -782,19 +1170,18 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
 
         </main>
 
-        <footer class="mt-16 border-t" style="background:var(--bg-surface); border-color:var(--border)">
-            <div class="max-w-7xl mx-auto px-4 py-8 text-center">
-                <p class="text-sm" style="color:var(--text-muted)">
-                    🎮 <span style="color:var(--accent); font-weight:700">GG</span>News
-                    &copy; <?= date('Y') ?> — Portal de Notícias de Games e E-Sports
-                </p>
-            </div>
+        <footer class="site-footer">
+            <p>🎮 <span>GG</span>News &copy; <?= date('Y') ?> — Portal de Notícias de Games e E-Sports</p>
         </footer>
 
     </div>
 
+    <!-- ══════════════════════════════════════════════════════
+         SCRIPTS
+    ══════════════════════════════════════════════════════ -->
     <script>
     (function () {
+        // ── Tema ────────────────────────────────────────────────
         var html    = document.documentElement;
         var btn     = document.getElementById('theme-toggle');
         var track   = document.getElementById('toggle-track');
@@ -819,11 +1206,11 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
         }
 
         applyTheme(html.getAttribute('data-theme') || 'light');
-
         btn && btn.addEventListener('click', function () {
             applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
         });
 
+        // ── Sidebar mobile ───────────────────────────────────────
         function openSidebar() {
             sidebar.classList.add('mobile-open');
             overlay.classList.add('active');
@@ -855,6 +1242,96 @@ if (isset($_GET['excluir_comentario']) && usuario_logado()) {
                 document.body.style.overflow = '';
             }
         });
+
+        // ── LIKES ────────────────────────────────────────────────
+        var btnLike   = document.getElementById('btn-like');
+        var mirrors   = document.querySelectorAll('.btn-like-mirror');
+        var likeCount = document.getElementById('like-count');
+        var likeLabel = document.getElementById('like-label');
+
+        function sincronizarMirrors(liked, total) {
+            // Atualiza o botão principal
+            if (likeCount) likeCount.textContent = total;
+            if (likeLabel) likeLabel.textContent = liked ? 'Curtido' : 'Curtir';
+
+            // Atualiza todos os mirrors
+            mirrors.forEach(function(m) {
+                m.classList.toggle('curtido', liked);
+                m.setAttribute('aria-pressed', liked ? 'true' : 'false');
+                var hIcon  = m.querySelector('.heart-icon');
+                var mCount = m.querySelector('.mirror-count');
+                var mLabel = m.querySelector('.mirror-label');
+                if (hIcon)  hIcon.textContent  = liked ? '❤️' : '🤍';
+                if (mCount) mCount.textContent  = total;
+                if (mLabel) mLabel.textContent  = liked ? 'Curtido' : 'Curtir';
+            });
+        }
+
+        function handleLike(botao) {
+            var noticiaId = botao.getAttribute('data-noticia');
+            var logado    = botao.getAttribute('data-logado') === '1';
+
+            if (!logado) {
+                window.location.href = '../../pages/auth/login.php';
+                return;
+            }
+
+            // Desabilita durante o request para evitar duplo clique
+            botao.disabled = true;
+
+            // Animação do coração
+            botao.classList.add('animating');
+            setTimeout(function() { botao.classList.remove('animating'); }, 400);
+
+            var formData = new FormData();
+            formData.append('acao', 'like');
+
+            fetch(window.location.href, {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.erro) {
+                    alert(data.erro);
+                    return;
+                }
+
+                var liked = data.liked;
+                var total = data.total;
+
+                // Atualiza botão principal
+                if (btnLike) {
+                    btnLike.classList.toggle('curtido', liked);
+                    btnLike.setAttribute('aria-pressed', liked ? 'true' : 'false');
+                    var hIcon = btnLike.querySelector('.heart-icon');
+                    if (hIcon) hIcon.textContent = liked ? '❤️' : '🤍';
+                }
+
+                sincronizarMirrors(liked, total);
+            })
+            .catch(function(e) {
+                console.error('Erro no like:', e);
+            })
+            .finally(function() {
+                botao.disabled = false;
+            });
+        }
+
+        // Botão principal
+        if (btnLike) {
+            btnLike.addEventListener('click', function() {
+                handleLike(this);
+            });
+        }
+
+        // Botões mirror (embaixo do artigo)
+        mirrors.forEach(function(m) {
+            m.addEventListener('click', function() {
+                handleLike(this);
+            });
+        });
+
     })();
     </script>
 
