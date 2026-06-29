@@ -1,141 +1,44 @@
 <?php
 // =====================================================
-// NOVA NOTÍCIA - CORRIGIDO
+// NOVA NOTÍCIA
 // Arquivo: pages/noticias/nova_noticia.php
 // =====================================================
 
-// Inicia a sessão se não estiver ativa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Inclui os arquivos necessários
 require_once __DIR__ . '/../../includes/conexao.php';
-require_once __DIR__ . '/../../includes/funcoes.php';
 require_once __DIR__ . '/../../includes/verifica_login.php';
 
-// =====================================================
-// VERIFICA SE A CONEXÃO EXISTE
-// =====================================================
-if (!isset($conn)) {
-    if (isset($pdo)) {
-        $conn = $pdo;
-    } else {
-        set_mensagem('erro', 'Erro de conexão com o banco de dados.');
-        redirecionar('dashboard.php');
-        exit;
-    }
-}
-
-// =====================================================
-// BUSCA CATEGORIAS
-// =====================================================
-$categorias = get_categorias($conn);
-
-// =====================================================
-// PROCESSAR FORMULÁRIO
-// =====================================================
+$categorias = get_categorias($pdo);
 $erro = '';
-$titulo = '';
-$conteudo = '';
-$imagem = '';
-$categoria_id = 0;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verifica token CSRF
-    if (!isset($_POST['csrf_token']) || !verificar_token_csrf($_POST['csrf_token'])) {
-        $erro = 'Token de segurança inválido. Tente novamente.';
+    $titulo = trim($_POST['titulo'] ?? '');
+    $conteudo = trim($_POST['noticia'] ?? '');
+    $imagem = trim($_POST['imagem'] ?? '');
+    $categoria_id = intval($_POST['categoria_id'] ?? 0);
+
+    if (empty($titulo) || empty($conteudo)) {
+        $erro = 'Título e conteúdo são obrigatórios.';
+    } elseif ($categoria_id <= 0) {
+        $erro = 'Selecione uma categoria.';
     } else {
-        $titulo = trim($_POST['titulo'] ?? '');
-        $conteudo = trim($_POST['noticia'] ?? '');
-        $imagem = trim($_POST['imagem'] ?? '');
-        $categoria_id = intval($_POST['categoria_id'] ?? 0);
+        $stmt = $pdo->prepare("INSERT INTO noticias (titulo, noticia, autor, imagem, categoria_id) VALUES (?, ?, ?, ?, ?)");
+        $stmt->execute([$titulo, $conteudo, get_usuario_id(), $imagem ?: null, $categoria_id]);
 
-        // Validações
-        if (empty($titulo)) {
-            $erro = 'O título é obrigatório.';
-        } elseif (strlen($titulo) < 3) {
-            $erro = 'O título deve ter pelo menos 3 caracteres.';
-        } elseif (empty($conteudo)) {
-            $erro = 'O conteúdo é obrigatório.';
-        } elseif (strlen($conteudo) < 10) {
-            $erro = 'O conteúdo deve ter pelo menos 10 caracteres.';
-        } elseif ($categoria_id <= 0) {
-            $erro = 'Selecione uma categoria válida.';
-        } else {
-            try {
-                // Verifica se a categoria existe
-                $stmt = $conn->prepare("SELECT id FROM categorias WHERE id = ?");
-                $stmt->execute([$categoria_id]);
-                if (!$stmt->fetch()) {
-                    $erro = 'Categoria selecionada não existe.';
-                } else {
-                    // Insere a notícia
-                    $stmt = $conn->prepare("
-                        INSERT INTO noticias (titulo, noticia, autor, imagem, categoria_id, data) 
-                        VALUES (?, ?, ?, ?, ?, NOW())
-                    ");
-                    $stmt->execute([
-                        $titulo,
-                        $conteudo,
-                        get_usuario_id(),
-                        !empty($imagem) ? $imagem : null,
-                        $categoria_id
-                    ]);
-
-                    $noticia_id = $conn->lastInsertId();
-                    
-                    error_log("Nova notícia publicada: ID $noticia_id por " . get_usuario_nome());
-                    set_mensagem('sucesso', 'Notícia publicada com sucesso!');
-                    redirecionar('dashboard.php');
-                    exit;
-                }
-            } catch (PDOException $e) {
-                error_log("Erro ao publicar notícia: " . $e->getMessage());
-                $erro = 'Erro ao publicar a notícia. Tente novamente.';
-            }
-        }
+        set_mensagem('sucesso', 'Notícia publicada com sucesso!');
+        redirecionar('dashboard.php');
     }
 }
-
-// Gera token CSRF
-$csrf_token = gerar_token_csrf();
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Nova Notícia - GGNews</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/style.css">
+    <link rel="stylesheet" href="../../css/style.css">
 
     <style>
-        :root {
-            --bg-body: #0c0c10;
-            --bg-card: #1a1a2e;
-            --bg-surface: #121218;
-            --bg-header: #121218;
-            --border: #252535;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --text-primary: #eeeaf8;
-            --text-secondary: #b8b5d0;
-            --text-muted: #5e5c76;
-            --text-danger: #ef4444;
-        }
-
-        [data-theme="light"] {
-            --bg-body: #f5f3f0;
-            --bg-card: #ffffff;
-            --bg-surface: #f8f6f4;
-            --bg-header: #ffffff;
-            --border: #e5e0db;
-            --text-primary: #1a1a1a;
-            --text-secondary: #4a4a5a;
-            --text-muted: #8888a0;
-        }
-
         * {
             margin: 0;
             padding: 0;
@@ -143,21 +46,16 @@ $csrf_token = gerar_token_csrf();
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: var(--bg-body);
-            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            background: #0f0f0f;
+            color: #ffffff;
             min-height: 100vh;
-            transition: background 0.3s ease, color 0.3s ease;
         }
 
         .site-header {
-            background: var(--bg-header);
-            border-bottom: 1px solid var(--border);
+            background: #1a1a2e;
+            border-bottom: 1px solid #2a2a3e;
             padding: 0.75rem 1rem;
-            position: sticky;
-            top: 0;
-            z-index: 30;
-            transition: background 0.3s ease, border-color 0.3s ease;
         }
 
         .header-inner {
@@ -171,23 +69,27 @@ $csrf_token = gerar_token_csrf();
         .header-logo {
             font-size: 1.5rem;
             font-weight: 700;
-            color: var(--text-primary);
+            color: #ffffff;
             text-decoration: none;
         }
 
         .header-logo span {
-            color: var(--accent);
+            color: #7c3aed;
+        }
+
+        .header-logo:hover {
+            color: #a78bfa;
         }
 
         .btn-voltar {
-            color: var(--text-muted);
+            color: #9ca3af;
             font-size: 0.9rem;
             text-decoration: none;
             transition: color 0.2s ease;
         }
 
         .btn-voltar:hover {
-            color: var(--text-primary);
+            color: #ffffff;
         }
 
         .container {
@@ -199,24 +101,21 @@ $csrf_token = gerar_token_csrf();
         .titulo {
             font-size: 2rem;
             font-weight: 700;
-            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+            color: #ffffff;
+        }
+
+        .subtitulo {
+            color: #9ca3af;
+            font-size: 1rem;
             margin-bottom: 2rem;
         }
 
-        .titulo small {
-            font-size: 1rem;
-            font-weight: 400;
-            color: var(--text-muted);
-            display: block;
-            margin-top: 0.25rem;
-        }
-
         .form-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
             border-radius: 0.75rem;
             padding: 2rem;
-            transition: background 0.3s ease, border-color 0.3s ease;
         }
 
         .form-group {
@@ -225,51 +124,45 @@ $csrf_token = gerar_token_csrf();
 
         .form-label {
             display: block;
-            color: var(--text-secondary);
+            color: #9ca3af;
             font-size: 0.875rem;
             font-weight: 500;
             margin-bottom: 0.375rem;
         }
 
         .form-label .required {
-            color: var(--text-danger);
-        }
-
-        .form-label .optional {
-            color: var(--text-muted);
-            font-weight: 400;
-            font-size: 0.8rem;
+            color: #ef4444;
         }
 
         .form-input {
             width: 100%;
             padding: 0.75rem 1rem;
-            background: var(--bg-body);
-            border: 1px solid var(--border);
+            background: #0f0f0f;
+            border: 1px solid #2a2a3e;
             border-radius: 0.5rem;
-            color: var(--text-primary);
+            color: #ffffff;
             font-family: inherit;
             font-size: 0.9rem;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
         .form-input::placeholder {
-            color: var(--text-muted);
+            color: #4a4a5e;
         }
 
         .form-input:focus {
             outline: none;
-            border-color: var(--accent);
+            border-color: #7c3aed;
             box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
         }
 
         .form-select {
             width: 100%;
             padding: 0.75rem 1rem;
-            background: var(--bg-body);
-            border: 1px solid var(--border);
+            background: #0f0f0f;
+            border: 1px solid #2a2a3e;
             border-radius: 0.5rem;
-            color: var(--text-primary);
+            color: #ffffff;
             font-family: inherit;
             font-size: 0.9rem;
             cursor: pointer;
@@ -281,23 +174,23 @@ $csrf_token = gerar_token_csrf();
         }
 
         .form-select option {
-            background: var(--bg-card);
-            color: var(--text-primary);
+            background: #1a1a2e;
+            color: #ffffff;
         }
 
         .form-select:focus {
             outline: none;
-            border-color: var(--accent);
+            border-color: #7c3aed;
             box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
         }
 
         .form-textarea {
             width: 100%;
             padding: 0.75rem 1rem;
-            background: var(--bg-body);
-            border: 1px solid var(--border);
+            background: #0f0f0f;
+            border: 1px solid #2a2a3e;
             border-radius: 0.5rem;
-            color: var(--text-primary);
+            color: #ffffff;
             font-family: inherit;
             font-size: 0.9rem;
             resize: vertical;
@@ -305,14 +198,18 @@ $csrf_token = gerar_token_csrf();
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
+        .form-textarea::placeholder {
+            color: #4a4a5e;
+        }
+
         .form-textarea:focus {
             outline: none;
-            border-color: var(--accent);
+            border-color: #7c3aed;
             box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
         }
 
         .form-hint {
-            color: var(--text-muted);
+            color: #4a4a5e;
             font-size: 0.75rem;
             margin-top: 0.25rem;
         }
@@ -321,12 +218,11 @@ $csrf_token = gerar_token_csrf();
             display: flex;
             gap: 1rem;
             margin-top: 1.5rem;
-            flex-wrap: wrap;
         }
 
         .btn-primary {
-            background: var(--accent);
-            color: #fff;
+            background: #7c3aed;
+            color: #ffffff;
             padding: 0.75rem 2rem;
             border: none;
             border-radius: 0.5rem;
@@ -337,92 +233,36 @@ $csrf_token = gerar_token_csrf();
         }
 
         .btn-primary:hover {
-            background: var(--accent-light);
+            background: #6d28d9;
             transform: translateY(-2px);
         }
 
         .btn-secondary {
-            background: var(--bg-surface);
-            color: var(--text-secondary);
+            background: #2a2a3e;
+            color: #ffffff;
             padding: 0.75rem 2rem;
-            border: 1px solid var(--border);
+            border: none;
             border-radius: 0.5rem;
             font-weight: 600;
             font-size: 0.95rem;
             text-decoration: none;
             display: inline-flex;
             align-items: center;
-            transition: background 0.2s ease, color 0.2s ease;
+            transition: background 0.2s ease;
         }
 
         .btn-secondary:hover {
-            background: var(--border);
-            color: var(--text-primary);
+            background: #3a3a4e;
         }
 
         .msg-erro {
             background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--text-danger);
-            color: var(--text-danger);
+            border: 1px solid #ef4444;
+            color: #f87171;
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
             font-size: 0.9rem;
-        }
-
-        .theme-toggle {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
-            border-radius: 0.5rem;
-            padding: 0.25rem 0.75rem;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-
-        .theme-toggle:hover {
-            background: var(--bg-card);
-        }
-
-        .toggle-track {
-            width: 30px;
-            height: 18px;
-            background: var(--border);
-            border-radius: 99px;
-            position: relative;
-            transition: background 0.25s ease;
-        }
-
-        [data-theme="dark"] .toggle-track {
-            background: var(--accent);
-        }
-
-        .toggle-thumb {
-            position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: #fff;
-            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-            transition: transform 0.25s ease;
-        }
-
-        [data-theme="dark"] .toggle-thumb {
-            transform: translateX(12px);
-        }
-
-        .toggle-icon {
-            font-size: 0.9rem;
-        }
-
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
         }
 
         @media (max-width: 768px) {
@@ -439,15 +279,15 @@ $csrf_token = gerar_token_csrf();
                 width: 100%;
                 justify-content: center;
             }
-
-            .titulo {
-                font-size: 1.5rem;
-            }
         }
 
         @media (max-width: 480px) {
             .container {
                 padding: 1rem 0.5rem;
+            }
+
+            .titulo {
+                font-size: 1.5rem;
             }
 
             .header-logo {
@@ -458,7 +298,7 @@ $csrf_token = gerar_token_csrf();
 
     <script>
         (function() {
-            var t = localStorage.getItem('gg-theme') || 'dark';
+            var t = localStorage.getItem('gg-theme') || 'light';
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
@@ -467,46 +307,34 @@ $csrf_token = gerar_token_csrf();
 
     <header class="site-header">
         <div class="header-inner">
-            <a href="<?= BASE_URL ?>" class="header-logo">
+            <!-- CORRIGIDO: Link para a página inicial -->
+            <a href="../../index.php" class="header-logo">
                 🎮 <span>GG</span>News
             </a>
-
-            <div class="header-right">
-                <button id="theme-toggle" class="theme-toggle" aria-label="Alternar tema">
-                    <div class="toggle-track">
-                        <div class="toggle-thumb"></div>
-                    </div>
-                    <span class="toggle-icon" id="theme-icon">🌙</span>
-                </button>
-                <a href="dashboard.php" class="btn-voltar">← Voltar</a>
-            </div>
+            <a href="dashboard.php" class="btn-voltar">← Voltar ao Painel</a>
         </div>
     </header>
 
     <main class="container">
 
-        <h1 class="titulo">
-            📝 Publicar Nova Notícia
-            <small>Compartilhe sua notícia com a comunidade</small>
-        </h1>
+        <h1 class="titulo">📝 Publicar Nova Notícia</h1>
+        <p class="subtitulo">Compartilhe sua notícia com a comunidade</p>
 
         <?php if ($erro): ?>
             <div class="msg-erro"><?= escape($erro) ?></div>
         <?php endif; ?>
 
         <form method="POST" class="form-card">
-            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
 
             <div class="form-group">
                 <label for="titulo" class="form-label">
                     Título da Notícia <span class="required">*</span>
                 </label>
                 <input type="text" id="titulo" name="titulo"
-                       value="<?= escape($titulo) ?>"
+                       value="<?= escape($titulo ?? '') ?>"
                        class="form-input"
                        placeholder="Ex: LOUD vence campeonato mundial..."
-                       required
-                       minlength="3">
+                       required>
             </div>
 
             <div class="form-group">
@@ -516,8 +344,8 @@ $csrf_token = gerar_token_csrf();
                 <select id="categoria_id" name="categoria_id" class="form-select" required>
                     <option value="">Selecione uma categoria...</option>
                     <?php foreach ($categorias as $cat): ?>
-                        <option value="<?= $cat['id'] ?>" <?= $categoria_id == $cat['id'] ? 'selected' : '' ?>>
-                            <?= $cat['icone'] ?? '📰' ?> <?= escape($cat['nome']) ?>
+                        <option value="<?= $cat['id'] ?>" <?= (isset($_POST['categoria_id']) && $_POST['categoria_id'] == $cat['id']) ? 'selected' : '' ?>>
+                            <?= $cat['icone'] ?> <?= escape($cat['nome']) ?>
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -530,17 +358,13 @@ $csrf_token = gerar_token_csrf();
                 <textarea id="noticia" name="noticia" rows="12"
                           class="form-textarea"
                           placeholder="Escreva o conteúdo completo da notícia..."
-                          required
-                          minlength="10"><?= escape($conteudo) ?></textarea>
-                <p class="form-hint">Mínimo 10 caracteres.</p>
+                          required><?= escape($conteudo ?? '') ?></textarea>
             </div>
 
             <div class="form-group">
-                <label for="imagem" class="form-label">
-                    URL da Imagem <span class="optional">(opcional)</span>
-                </label>
+                <label for="imagem" class="form-label">URL da Imagem <span style="color:#4a4a5e;">(opcional)</span></label>
                 <input type="url" id="imagem" name="imagem"
-                       value="<?= escape($imagem) ?>"
+                       value="<?= escape($imagem ?? '') ?>"
                        class="form-input"
                        placeholder="https://exemplo.com/imagem.jpg">
                 <p class="form-hint">Cole a URL de uma imagem da internet ou deixe em branco.</p>
@@ -554,34 +378,6 @@ $csrf_token = gerar_token_csrf();
         </form>
 
     </main>
-
-    <script>
-    (function () {
-        var html = document.documentElement;
-        var btn = document.getElementById('theme-toggle');
-        var icon = document.getElementById('theme-icon');
-
-        function applyTheme(theme) {
-            html.setAttribute('data-theme', theme);
-            localStorage.setItem('gg-theme', theme);
-            if (theme === 'dark') {
-                if (icon) icon.textContent = '☀️';
-            } else {
-                if (icon) icon.textContent = '🌙';
-            }
-        }
-
-        var savedTheme = localStorage.getItem('gg-theme') || 'dark';
-        applyTheme(savedTheme);
-
-        if (btn) {
-            btn.addEventListener('click', function () {
-                var current = html.getAttribute('data-theme');
-                applyTheme(current === 'dark' ? 'light' : 'dark');
-            });
-        }
-    })();
-    </script>
 
 </body>
 </html>

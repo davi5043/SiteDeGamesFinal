@@ -1,100 +1,35 @@
 <?php
 // =====================================================
-// DASHBOARD (PAINEL DO USUÁRIO) - CORRIGIDO E PADRONIZADO
+// DASHBOARD (PAINEL DO USUÁRIO)
 // Arquivo: pages/noticias/dashboard.php
 // =====================================================
 
-// Inicia a sessão se não estiver ativa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Inclui os arquivos necessários
 require_once __DIR__ . '/../../includes/conexao.php';
-require_once __DIR__ . '/../../includes/funcoes.php';
 require_once __DIR__ . '/../../includes/verifica_login.php';
 require_once __DIR__ . '/../../includes/avatar_helper.php';
 
-// =====================================================
-// BUSCA AS NOTÍCIAS DO USUÁRIO
-// =====================================================
-try {
-    if (!isset($conn)) {
-        throw new Exception("Conexão com o banco de dados não disponível.");
-    }
+$stmt = $pdo->prepare("SELECT * FROM noticias WHERE autor = ? ORDER BY data DESC");
+$stmt->execute([get_usuario_id()]);
+$minhas_noticias = $stmt->fetchAll();
 
-    $stmt = $conn->prepare("
-        SELECT n.*, c.nome AS categoria_nome, c.icone AS categoria_icone
-        FROM noticias n
-        LEFT JOIN categorias c ON n.categoria_id = c.id
-        WHERE n.autor = ? 
-        ORDER BY n.data DESC
-    ");
-    $stmt->execute([get_usuario_id()]);
-    $minhas_noticias = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-} catch (PDOException $e) {
-    error_log("Erro ao buscar notícias do dashboard: " . $e->getMessage());
-    $minhas_noticias = [];
-    set_mensagem('erro', 'Erro ao carregar suas notícias. Tente novamente.');
-} catch (Exception $e) {
-    error_log("Erro no dashboard: " . $e->getMessage());
-    $minhas_noticias = [];
-}
-
-// =====================================================
-// DADOS DO USUÁRIO PARA O AVATAR
-// =====================================================
 $usuario_logado = [
-    'id' => get_usuario_id(),
     'nome' => get_usuario_nome(),
-    'foto' => get_usuario_foto(),
-    'email' => get_usuario_email()
+    'foto' => get_usuario_foto()
 ];
-
-// =====================================================
-// CONTAGEM DE NOTÍCIAS
-// =====================================================
-$total_noticias = count($minhas_noticias);
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Painel - GGNews</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/style.css">
+    <link rel="stylesheet" href="../../css/style.css">
 
     <style>
-        :root {
-            --bg-body: #0c0c10;
-            --bg-card: #1a1a2e;
-            --bg-surface: #121218;
-            --bg-header: #121218;
-            --border: #252535;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --accent-hover: #5b21b6;
-            --text-primary: #eeeaf8;
-            --text-secondary: #b8b5d0;
-            --text-muted: #5e5c76;
-            --text-danger: #ef4444;
-            --text-success: #10b981;
-            --shadow: 0 4px 20px rgba(0,0,0,0.4);
-        }
-
-        [data-theme="light"] {
-            --bg-body: #f5f3f0;
-            --bg-card: #ffffff;
-            --bg-surface: #f8f6f4;
-            --bg-header: #ffffff;
-            --border: #e5e0db;
-            --text-primary: #1a1a1a;
-            --text-secondary: #4a4a5a;
-            --text-muted: #8888a0;
-            --shadow: 0 4px 20px rgba(0,0,0,0.08);
-        }
+        /* =====================================================
+           CSS DASHBOARD - HEADER ORGANIZADO
+           ===================================================== */
 
         * {
             margin: 0;
@@ -103,22 +38,30 @@ $total_noticias = count($minhas_noticias);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: var(--bg-body);
-            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            background: #f8f4f0;
+            color: #1a1a1a;
             min-height: 100vh;
-            transition: background 0.3s ease, color 0.3s ease;
         }
 
-        /* Header */
+        [data-theme="dark"] body {
+            background: #0c0c10;
+            color: #eeeaf8;
+        }
+
+        /* ── HEADER ORGANIZADO ──────────────────────────────────── */
         .site-header {
-            background: var(--bg-header);
-            border-bottom: 1px solid var(--border);
-            padding: 0.75rem 1rem;
+            background: #ffffff;
+            border-bottom: 2px solid #e0d8d0;
+            padding: 0.75rem 1.5rem;
             position: sticky;
             top: 0;
             z-index: 30;
-            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+
+        [data-theme="dark"] .site-header {
+            background: #121218;
+            border-color: #252535;
         }
 
         .header-inner {
@@ -127,119 +70,125 @@ $total_noticias = count($minhas_noticias);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            gap: 1rem;
+            flex-wrap: wrap;
+            gap: 0.75rem;
         }
 
-        .header-logo {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            text-decoration: none;
-            flex-shrink: 0;
-        }
-
-        .header-logo span {
-            color: var(--accent);
-        }
-
-        .header-nav {
+        /* ── LADO ESQUERDO: Avatar + Logo ───────────────────────── */
+        .header-left {
             display: flex;
             align-items: center;
             gap: 0.75rem;
+        }
+
+        .header-left .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e0d8d0;
+        }
+
+        [data-theme="dark"] .header-left .avatar {
+            border-color: #252535;
+        }
+
+        .header-left .avatar-fallback {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ede9fe;
+            color: #5b21b6;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: 2px solid #e0d8d0;
+        }
+
+        [data-theme="dark"] .header-left .avatar-fallback {
+            background: #1c1831;
+            color: #c4b5fd;
+            border-color: #252535;
+        }
+
+        .header-logo {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        [data-theme="dark"] .header-logo {
+            color: #eeeaf8;
+        }
+
+        .header-logo span {
+            color: #7c3aed;
+        }
+
+        .header-logo:hover {
+            color: #7c3aed;
+        }
+
+        /* ── LADO DIREITO: Toggle + Links ───────────────────────── */
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
             flex-wrap: wrap;
         }
 
-        .header-nav .nome {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            display: none;
-        }
-
-        @media (min-width: 640px) {
-            .header-nav .nome {
-                display: inline;
-            }
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: #fff;
-            padding: 0.4rem 1rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
-            transition: background 0.2s ease;
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-light);
-        }
-
-        .btn-sair {
-            color: var(--text-muted);
-            font-size: 0.875rem;
-            text-decoration: none;
-            transition: color 0.2s ease;
-        }
-
-        .btn-sair:hover {
-            color: var(--text-danger);
-        }
-
-        .btn-conta {
-            color: var(--accent);
-            font-size: 0.875rem;
-            text-decoration: none;
-            transition: color 0.2s ease;
-        }
-
-        .btn-conta:hover {
-            color: var(--accent-light);
-            text-decoration: underline;
-        }
-
-        /* Theme Toggle */
+        /* ── TOGGLE DE TEMA ─────────────────────────────────────── */
         .theme-toggle {
             display: flex;
             align-items: center;
             gap: 0.5rem;
-            background: var(--bg-surface);
-            border: 1px solid var(--border);
+            background: #f3f0eb;
+            border: 1px solid #e0d8d0;
             border-radius: 0.5rem;
-            padding: 0.25rem 0.75rem;
+            padding: 0.4rem 0.75rem;
             cursor: pointer;
-            transition: background 0.2s ease;
+            transition: all 0.2s ease;
+        }
+
+        [data-theme="dark"] .theme-toggle {
+            background: #1a1a22;
+            border-color: #252535;
         }
 
         .theme-toggle:hover {
-            background: var(--bg-card);
+            background: #ede9fe;
+            border-color: #7c3aed;
+        }
+
+        [data-theme="dark"] .theme-toggle:hover {
+            background: #1c1831;
+            border-color: #7c3aed;
         }
 
         .toggle-track {
             width: 30px;
             height: 18px;
-            background: var(--border);
+            background: #d0c8c0;
             border-radius: 99px;
             position: relative;
             transition: background 0.25s ease;
+            flex-shrink: 0;
         }
 
         [data-theme="dark"] .toggle-track {
-            background: var(--accent);
+            background: #7c3aed;
         }
 
         .toggle-thumb {
             position: absolute;
-            top: 3px;
-            left: 3px;
-            width: 12px;
-            height: 12px;
+            top: 2px;
+            left: 2px;
+            width: 14px;
+            height: 14px;
             border-radius: 50%;
             background: #fff;
             box-shadow: 0 1px 4px rgba(0,0,0,0.2);
@@ -251,132 +200,265 @@ $total_noticias = count($minhas_noticias);
         }
 
         .toggle-icon {
-            font-size: 0.9rem;
+            font-size: 0.8rem;
+            line-height: 1;
+            color: #5f6378;
         }
 
-        /* Dashboard */
-        .dashboard-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 2rem 1rem;
+        [data-theme="dark"] .toggle-icon {
+            color: #918fac;
         }
 
-        .dashboard-header {
+        .toggle-label {
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: #5f6378;
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .toggle-label {
+            color: #918fac;
+        }
+
+        /* ── LINKS: Minha Conta e Sair ─────────────────────────── */
+        .header-links {
             display: flex;
-            flex-direction: column;
-            gap: 1rem;
-            margin-bottom: 2rem;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .header-link {
+            color: #5f6378;
+            font-size: 0.875rem;
+            text-decoration: none;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.3rem;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .header-link {
+            color: #918fac;
+        }
+
+        .header-link:hover {
+            color: #7c3aed;
+            background: rgba(124, 58, 237, 0.05);
+        }
+
+        [data-theme="dark"] .header-link:hover {
+            color: #a78bfa;
+            background: rgba(124, 58, 237, 0.1);
+        }
+
+        .header-link-sair {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            text-decoration: none;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.3rem;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        [data-theme="dark"] .header-link-sair {
+            color: #5e5c76;
+        }
+
+        .header-link-sair:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* ── NOME DO USUÁRIO ────────────────────────────────────── */
+        .header-nome {
+            color: #5f6378;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        [data-theme="dark"] .header-nome {
+            color: #918fac;
         }
 
         @media (min-width: 640px) {
-            .dashboard-header {
-                flex-direction: row;
-                align-items: center;
-                justify-content: space-between;
+            .header-nome {
+                display: inline;
             }
         }
 
+        /* ── DIVISOR ────────────────────────────────────────────── */
+        .divisor-header {
+            width: 1px;
+            height: 28px;
+            background: #e0d8d0;
+        }
+
+        [data-theme="dark"] .divisor-header {
+            background: #252535;
+        }
+
+        /* ── CONTEÚDO PRINCIPAL ─────────────────────────────────── */
+        .dashboard-container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2.5rem 1.5rem;
+        }
+
+        .dashboard-header {
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 2px solid #e0d8d0;
+        }
+
+        [data-theme="dark"] .dashboard-header {
+            border-color: #252535;
+        }
+
         .dashboard-titulo {
-            font-size: 2rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin: 0;
+            font-size: 2.2rem;
+            font-weight: 800;
+            color: #1a1a1a;
+            margin: 0 0 0.25rem 0;
+        }
+
+        [data-theme="dark"] .dashboard-titulo {
+            color: #eeeaf8;
         }
 
         .dashboard-subtitulo {
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            margin: 0.25rem 0 0 0;
+            color: #9ca3af;
+            font-size: 1rem;
+            margin: 0;
         }
 
-        .dashboard-stats {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
+        [data-theme="dark"] .dashboard-subtitulo {
+            color: #5e5c76;
         }
 
-        .stat-item {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 0.5rem;
-            padding: 0.5rem 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .stat-number {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--accent);
-        }
-
-        .stat-label {
-            font-size: 0.75rem;
-            color: var(--text-muted);
+        .dashboard-actions {
+            margin-top: 1.25rem;
         }
 
         .btn-nova {
             display: inline-flex;
             align-items: center;
             gap: 0.5rem;
-            background: var(--accent);
+            background: #7c3aed;
             color: #fff;
-            padding: 0.6rem 1.5rem;
+            padding: 0.7rem 2rem;
             border-radius: 0.5rem;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             text-decoration: none;
-            transition: background 0.2s ease, transform 0.2s ease;
+            transition: all 0.2s ease;
             border: none;
             cursor: pointer;
-            align-self: flex-start;
         }
 
         .btn-nova:hover {
-            background: var(--accent-light);
+            background: #6d28d9;
             transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3);
         }
 
-        /* Messages */
+        /* ── MENSAGENS ───────────────────────────────────────────── */
         .msg-sucesso {
             background: rgba(16, 185, 129, 0.1);
-            border: 1px solid var(--text-success);
-            color: var(--text-success);
-            padding: 0.75rem 1rem;
+            border: 1px solid #10b981;
+            color: #059669;
+            padding: 1rem 1.25rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
         }
 
         .msg-erro {
             background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--text-danger);
-            color: var(--text-danger);
-            padding: 0.75rem 1rem;
+            border: 1px solid #ef4444;
+            color: #dc2626;
+            padding: 1rem 1.25rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
         }
 
-        .msg-info {
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid #3b82f6;
-            color: #3b82f6;
-            padding: 0.75rem 1rem;
+        /* ── ESTADO VAZIO ────────────────────────────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            background: #ffffff;
+            border: 2px dashed #e0d8d0;
+            border-radius: 1rem;
+            margin-top: 1rem;
+        }
+
+        [data-theme="dark"] .empty-state {
+            background: #121218;
+            border-color: #252535;
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+
+        .empty-state-titulo {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #1a1a1a;
+            margin-bottom: 0.5rem;
+        }
+
+        [data-theme="dark"] .empty-state-titulo {
+            color: #eeeaf8;
+        }
+
+        .empty-state-texto {
+            color: #9ca3af;
+            font-size: 1rem;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        [data-theme="dark"] .empty-state-texto {
+            color: #5e5c76;
+        }
+
+        .empty-state-link {
+            display: inline-block;
+            margin-top: 1.5rem;
+            color: #7c3aed;
+            font-weight: 600;
+            font-size: 1rem;
+            text-decoration: none;
+            padding: 0.6rem 1.5rem;
+            border: 2px solid #7c3aed;
             border-radius: 0.5rem;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
+            transition: all 0.2s ease;
         }
 
-        /* Table */
+        .empty-state-link:hover {
+            background: #7c3aed;
+            color: #fff;
+            transform: translateY(-2px);
+        }
+
+        /* ── TABELA ───────────────────────────────────────────────── */
         .tabela-container {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 0.875rem;
+            background: #ffffff;
+            border: 1px solid #e0d8d0;
+            border-radius: 1rem;
             overflow: hidden;
-            box-shadow: var(--shadow);
-            transition: background 0.3s ease, border-color 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+            margin-top: 1rem;
+        }
+
+        [data-theme="dark"] .tabela-container {
+            background: #121218;
+            border-color: #252535;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.35);
         }
 
         .tabela {
@@ -385,23 +467,33 @@ $total_noticias = count($minhas_noticias);
         }
 
         .tabela th {
-            background: var(--bg-surface);
-            color: var(--text-muted);
+            background: #f8f4f0;
+            color: #5f6378;
             font-weight: 600;
             font-size: 0.75rem;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding: 0.75rem 1.25rem;
+            letter-spacing: 0.08em;
+            padding: 1rem 1.25rem;
             text-align: left;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 2px solid #e0d8d0;
+        }
+
+        [data-theme="dark"] .tabela th {
+            background: #1a1a22;
+            color: #918fac;
+            border-color: #252535;
         }
 
         .tabela td {
-            padding: 0.75rem 1.25rem;
-            border-bottom: 1px solid var(--border);
-            color: var(--text-primary);
-            font-size: 0.875rem;
-            vertical-align: middle;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #e0d8d0;
+            color: #1a1a1a;
+            font-size: 0.95rem;
+        }
+
+        [data-theme="dark"] .tabela td {
+            color: #eeeaf8;
+            border-color: #252535;
         }
 
         .tabela tr:last-child td {
@@ -409,34 +501,30 @@ $total_noticias = count($minhas_noticias);
         }
 
         .tabela tr:hover td {
-            background: var(--bg-surface);
+            background: #f8f4f0;
+        }
+
+        [data-theme="dark"] .tabela tr:hover td {
+            background: #1a1a22;
         }
 
         .tabela-titulo-link {
-            color: var(--text-primary);
+            color: #1a1a1a;
             text-decoration: none;
             font-weight: 500;
             transition: color 0.2s ease;
-            display: block;
         }
 
         .tabela-titulo-link:hover {
-            color: var(--accent);
+            color: #7c3aed;
         }
 
-        .tabela-categoria {
-            display: inline-block;
-            font-size: 0.7rem;
-            padding: 0.2rem 0.6rem;
-            border-radius: 999px;
-            background: var(--accent);
-            color: #fff;
+        [data-theme="dark"] .tabela-titulo-link {
+            color: #eeeaf8;
         }
 
-        .tabela-data {
-            color: var(--text-muted);
-            font-size: 0.8rem;
-            white-space: nowrap;
+        [data-theme="dark"] .tabela-titulo-link:hover {
+            color: #a78bfa;
         }
 
         .tabela-acoes {
@@ -448,7 +536,8 @@ $total_noticias = count($minhas_noticias);
             color: #3b82f6;
             text-decoration: none;
             font-size: 0.875rem;
-            margin-right: 1rem;
+            margin-right: 1.25rem;
+            font-weight: 500;
             transition: color 0.2s ease;
         }
 
@@ -458,13 +547,11 @@ $total_noticias = count($minhas_noticias);
         }
 
         .btn-excluir {
-            color: var(--text-danger);
+            color: #ef4444;
             text-decoration: none;
             font-size: 0.875rem;
+            font-weight: 500;
             transition: color 0.2s ease;
-            background: none;
-            border: none;
-            cursor: pointer;
         }
 
         .btn-excluir:hover {
@@ -472,73 +559,36 @@ $total_noticias = count($minhas_noticias);
             text-decoration: underline;
         }
 
-        .btn-ver {
-            color: var(--text-secondary);
-            text-decoration: none;
-            font-size: 0.875rem;
-            margin-right: 0.75rem;
-            transition: color 0.2s ease;
-        }
-
-        .btn-ver:hover {
-            color: var(--text-primary);
-            text-decoration: underline;
-        }
-
-        /* Empty State */
-        .empty-state {
-            text-align: center;
-            padding: 4rem 2rem;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 0.875rem;
-            transition: background 0.3s ease, border-color 0.3s ease;
-        }
-
-        .empty-state-icon {
-            font-size: 4rem;
-            margin-bottom: 1rem;
-            opacity: 0.6;
-        }
-
-        .empty-state-titulo {
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 0.5rem;
-        }
-
-        .empty-state-texto {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            max-width: 400px;
-            margin: 0 auto;
-        }
-
-        .empty-state-link {
-            display: inline-block;
-            margin-top: 1.5rem;
-            color: var(--accent);
-            font-weight: 500;
-            text-decoration: none;
-            transition: color 0.2s ease;
-        }
-
-        .empty-state-link:hover {
-            color: var(--accent-light);
-            text-decoration: underline;
-        }
-
-        /* Responsive */
+        /* ── RESPONSIVIDADE ────────────────────────────────────── */
         @media (max-width: 768px) {
+            .dashboard-container {
+                padding: 1.5rem 1rem;
+            }
+
             .dashboard-titulo {
-                font-size: 1.5rem;
+                font-size: 1.6rem;
+            }
+
+            .header-inner {
+                gap: 0.5rem;
+            }
+
+            .header-right {
+                gap: 0.5rem;
+            }
+
+            .theme-toggle {
+                padding: 0.3rem 0.5rem;
+            }
+
+            .toggle-label {
+                font-size: 0.6rem;
             }
 
             .tabela th,
             .tabela td {
-                padding: 0.5rem 0.75rem;
-                font-size: 0.8rem;
+                padding: 0.75rem 0.75rem;
+                font-size: 0.85rem;
             }
 
             .tabela-acoes {
@@ -552,149 +602,181 @@ $total_noticias = count($minhas_noticias);
                 margin-right: 0;
             }
 
-            .header-nav .nome {
-                display: none;
+            .empty-state {
+                padding: 2.5rem 1rem;
             }
 
-            .stat-item {
-                padding: 0.4rem 0.75rem;
+            .empty-state-icon {
+                font-size: 3rem;
+            }
+
+            .header-nome {
+                display: none;
             }
         }
 
         @media (max-width: 480px) {
             .dashboard-container {
-                padding: 1rem 0.5rem;
+                padding: 1rem 0.75rem;
             }
 
-            .tabela th:nth-child(2),
-            .tabela td:nth-child(2) {
-                display: none;
+            .dashboard-titulo {
+                font-size: 1.3rem;
             }
 
-            .tabela th,
-            .tabela td {
-                padding: 0.4rem 0.5rem;
-                font-size: 0.75rem;
-            }
-
-            .dashboard-stats {
+            .header-inner {
                 flex-direction: column;
+                align-items: center;
                 gap: 0.5rem;
+                padding: 0.25rem 0;
             }
 
-            .header-nav {
-                gap: 0.4rem;
+            .header-left {
+                gap: 0.5rem;
             }
 
             .header-logo {
                 font-size: 1rem;
             }
 
-            .btn-nova {
-                font-size: 0.8rem;
-                padding: 0.4rem 1rem;
+            .header-right {
+                width: 100%;
+                justify-content: center;
+                flex-wrap: wrap;
+                gap: 0.5rem;
             }
-        }
 
-        /* Scrollbar style */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
-        }
+            .theme-toggle {
+                padding: 0.25rem 0.5rem;
+            }
 
-        ::-webkit-scrollbar-track {
-            background: var(--bg-body);
-        }
+            .toggle-track {
+                width: 24px;
+                height: 14px;
+            }
 
-        ::-webkit-scrollbar-thumb {
-            background: var(--border);
-            border-radius: 4px;
-        }
+            .toggle-thumb {
+                width: 10px;
+                height: 10px;
+                top: 2px;
+                left: 2px;
+            }
 
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--text-muted);
+            [data-theme="dark"] .toggle-thumb {
+                transform: translateX(10px);
+            }
+
+            .toggle-label {
+                font-size: 0.55rem;
+            }
+
+            .toggle-icon {
+                font-size: 0.7rem;
+            }
+
+            .header-link,
+            .header-link-sair {
+                font-size: 0.8rem;
+                padding: 0.2rem 0.4rem;
+            }
+
+            .divisor-header {
+                height: 20px;
+            }
+
+            .tabela th,
+            .tabela td {
+                padding: 0.5rem 0.5rem;
+                font-size: 0.75rem;
+            }
+
+            .btn-nova {
+                padding: 0.5rem 1rem;
+                font-size: 0.8rem;
+            }
         }
     </style>
 
     <script>
         (function() {
-            var t = localStorage.getItem('gg-theme') || 'dark';
+            var t = localStorage.getItem('gg-theme') || 'light';
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
 </head>
 <body>
 
+    <!-- ════════════════════════════════════════════════════
+         HEADER ORGANIZADO
+    ════════════════════════════════════════════════════ -->
     <header class="site-header">
         <div class="header-inner">
-            <a href="<?= BASE_URL ?>" class="header-logo">
-                🎮 <span>GG</span>News
-            </a>
 
-            <nav class="header-nav">
+            <!-- LADO ESQUERDO: Avatar + GGNews -->
+            <div class="header-left">
+                <?php 
+                if ($usuario_logado && $usuario_logado['foto']): ?>
+                    <img src="../../uploads/<?= escape($usuario_logado['foto']) ?>" class="avatar" alt="Avatar">
+                <?php else: ?>
+                    <div class="avatar-fallback"><?= get_avatar_initials(get_usuario_nome()) ?></div>
+                <?php endif; ?>
+                <a href="../../index.php" class="header-logo">
+                    🎮 <span>GG</span>News
+                </a>
+            </div>
+
+            <!-- LADO DIREITO: Toggle + Minha Conta + Sair -->
+            <div class="header-right">
+                <!-- Toggle de tema -->
                 <button id="theme-toggle" class="theme-toggle" aria-label="Alternar tema">
-                    <div class="toggle-track">
-                        <div class="toggle-thumb"></div>
+                    <div class="toggle-track" id="toggle-track">
+                        <div class="toggle-thumb" id="toggle-thumb"></div>
                     </div>
                     <span class="toggle-icon" id="theme-icon">🌙</span>
+                    <span class="toggle-label" id="theme-label">Modo Escuro</span>
                 </button>
 
-                <?php if ($usuario_logado['foto']): ?>
-                    <img src="<?= BASE_URL ?>uploads/<?= escape($usuario_logado['foto']) ?>" 
-                         class="avatar" 
-                         alt="Avatar"
-                         style="width:32px;height:32px;border-radius:50%;object-fit:cover;border:2px solid var(--border);">
-                <?php else: ?>
-                    <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--accent);color:#fff;font-weight:700;font-size:0.8rem;border:2px solid var(--border);">
-                        <?= get_avatar_initials($usuario_logado['nome']) ?>
-                    </div>
-                <?php endif; ?>
+                <!-- Divisor -->
+                <span class="divisor-header"></span>
 
-                <span class="nome"><?= escape($usuario_logado['nome']) ?></span>
-                <a href="<?= BASE_URL ?>pages/usuario/editar_usuario.php" class="btn-conta">Minha Conta</a>
-                <a href="<?= BASE_URL ?>pages/auth/logout.php" class="btn-sair">Sair</a>
-            </nav>
+                <!-- Links -->
+                <div class="header-links">
+                    <span class="header-nome"><?= escape(get_usuario_nome()) ?></span>
+                    <a href="../usuario/editar_usuario.php" class="header-link">👤 Minha Conta</a>
+                    <a href="../auth/logout.php" class="header-link-sair">🚪 Sair</a>
+                </div>
+            </div>
+
         </div>
     </header>
 
+    <!-- ════════════════════════════════════════════════════
+         CONTEÚDO PRINCIPAL
+    ════════════════════════════════════════════════════ -->
     <main class="dashboard-container">
 
-        <!-- Mensagens Flash -->
         <?php $msg = get_mensagem(); if ($msg): ?>
-            <div class="<?= $msg['tipo'] === 'sucesso' ? 'msg-sucesso' : ($msg['tipo'] === 'erro' ? 'msg-erro' : 'msg-info') ?>">
+            <div class="<?= $msg['tipo'] === 'sucesso' ? 'msg-sucesso' : 'msg-erro' ?>">
                 <?= escape($msg['texto']) ?>
             </div>
         <?php endif; ?>
 
-        <!-- Header do Dashboard -->
         <div class="dashboard-header">
-            <div>
-                <h1 class="dashboard-titulo">📋 Meu Painel</h1>
-                <p class="dashboard-subtitulo">Gerencie suas notícias publicadas</p>
-            </div>
-            
-            <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
-                <div class="dashboard-stats">
-                    <div class="stat-item">
-                        <span class="stat-number"><?= $total_noticias ?></span>
-                        <span class="stat-label">notícias</span>
-                    </div>
-                </div>
-                <a href="<?= BASE_URL ?>pages/noticias/nova_noticia.php" class="btn-nova">
-                    + Nova Notícia
+            <h1 class="dashboard-titulo">📋 Meu Painel</h1>
+            <p class="dashboard-subtitulo">Gerencie suas notícias publicadas</p>
+            <div class="dashboard-actions">
+                <a href="nova_noticia.php" class="btn-nova">
+                    ➕ Nova Notícia
                 </a>
             </div>
         </div>
 
-        <!-- Lista de Notícias -->
         <?php if (empty($minhas_noticias)): ?>
             <div class="empty-state">
                 <div class="empty-state-icon">📝</div>
                 <h2 class="empty-state-titulo">Você ainda não publicou nenhuma notícia</h2>
                 <p class="empty-state-texto">Comece agora mesmo compartilhando suas notícias com a comunidade!</p>
-                <a href="<?= BASE_URL ?>pages/noticias/nova_noticia.php" class="empty-state-link">
-                    Publicar minha primeira notícia →
-                </a>
+                <a href="nova_noticia.php" class="empty-state-link">🚀 Publicar minha primeira notícia →</a>
             </div>
         <?php else: ?>
             <div class="tabela-container">
@@ -702,8 +784,7 @@ $total_noticias = count($minhas_noticias);
                     <thead>
                         <tr>
                             <th>Título</th>
-                            <th>Categoria</th>
-                            <th>Data</th>
+                            <th style="display:none;">Data</th>
                             <th style="text-align:right;">Ações</th>
                         </tr>
                     </thead>
@@ -711,38 +792,21 @@ $total_noticias = count($minhas_noticias);
                         <?php foreach ($minhas_noticias as $noticia): ?>
                             <tr>
                                 <td>
-                                    <a href="<?= BASE_URL ?>pages/noticias/noticia.php?id=<?= $noticia['id'] ?>" 
-                                       class="tabela-titulo-link">
+                                    <a href="noticia.php?id=<?= $noticia['id'] ?>" class="tabela-titulo-link">
                                         <?= escape($noticia['titulo']) ?>
                                     </a>
                                 </td>
-                                <td>
-                                    <?php if (!empty($noticia['categoria_nome'])): ?>
-                                        <span class="tabela-categoria">
-                                            <?= $noticia['categoria_icone'] ?? '📰' ?>
-                                            <?= escape($noticia['categoria_nome']) ?>
-                                        </span>
-                                    <?php else: ?>
-                                        <span style="color:var(--text-muted);font-size:0.75rem;">Sem categoria</span>
-                                    <?php endif; ?>
-                                </td>
-                                <td class="tabela-data">
+                                <td style="display:none;" class="tabela-data">
                                     <?= formatar_data($noticia['data']) ?>
                                 </td>
                                 <td class="tabela-acoes">
-                                    <a href="<?= BASE_URL ?>pages/noticias/noticia.php?id=<?= $noticia['id'] ?>" 
-                                       class="btn-ver" 
-                                       title="Ver notícia">
-                                        👁️
+                                    <a href="editar_noticia.php?id=<?= $noticia['id'] ?>" class="btn-editar">
+                                        ✏️ Editar
                                     </a>
-                                    <a href="<?= BASE_URL ?>pages/noticias/editar_noticia.php?id=<?= $noticia['id'] ?>" 
-                                       class="btn-editar">
-                                        Editar
-                                    </a>
-                                    <a href="<?= BASE_URL ?>pages/noticias/excluir_noticia.php?id=<?= $noticia['id'] ?>" 
+                                    <a href="excluir_noticia.php?id=<?= $noticia['id'] ?>"
                                        class="btn-excluir"
-                                       onclick="return confirm('Tem certeza que deseja excluir a notícia \'<?= escape($noticia['titulo']) ?>\'? Esta ação não pode ser desfeita.')">
-                                        Excluir
+                                       onclick="return confirm('Tem certeza que deseja excluir esta notícia?')">
+                                        🗑️ Excluir
                                     </a>
                                 </td>
                             </tr>
@@ -750,55 +814,39 @@ $total_noticias = count($minhas_noticias);
                     </tbody>
                 </table>
             </div>
-            
-            <!-- Rodapé da tabela com informações -->
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:1rem;flex-wrap:wrap;gap:0.5rem;">
-                <span style="color:var(--text-muted);font-size:0.8rem;">
-                    Mostrando <?= $total_noticias ?> notícia<?= $total_noticias > 1 ? 's' : '' ?>
-                </span>
-                <a href="<?= BASE_URL ?>" style="color:var(--text-muted);font-size:0.8rem;text-decoration:none;">
-                    ← Voltar para o portal
-                </a>
-            </div>
         <?php endif; ?>
 
     </main>
 
+    <!-- ════════════════════════════════════════════════════
+         SCRIPTS
+    ════════════════════════════════════════════════════ -->
     <script>
     (function () {
-        var html = document.documentElement;
-        var btn = document.getElementById('theme-toggle');
-        var icon = document.getElementById('theme-icon');
+        var html  = document.documentElement;
+        var btn   = document.getElementById('theme-toggle');
+        var track = document.getElementById('toggle-track');
+        var icon  = document.getElementById('theme-icon');
+        var label = document.getElementById('theme-label');
 
         function applyTheme(theme) {
             html.setAttribute('data-theme', theme);
             localStorage.setItem('gg-theme', theme);
             if (theme === 'dark') {
+                track && track.classList.add('is-dark');
                 if (icon) icon.textContent = '☀️';
+                if (label) label.textContent = 'Modo Claro';
             } else {
+                track && track.classList.remove('is-dark');
                 if (icon) icon.textContent = '🌙';
+                if (label) label.textContent = 'Modo Escuro';
             }
         }
 
-        // Aplica o tema salvo
-        var savedTheme = localStorage.getItem('gg-theme') || 'dark';
-        applyTheme(savedTheme);
+        applyTheme(html.getAttribute('data-theme') || 'light');
 
-        // Alterna o tema
-        if (btn) {
-            btn.addEventListener('click', function () {
-                var current = html.getAttribute('data-theme');
-                applyTheme(current === 'dark' ? 'light' : 'dark');
-            });
-        }
-
-        // Confirmação de exclusão com Sweet Alert (opcional)
-        document.querySelectorAll('.btn-excluir').forEach(function(link) {
-            link.addEventListener('click', function(e) {
-                if (!confirm(this.getAttribute('data-confirm') || 'Tem certeza que deseja excluir esta notícia?')) {
-                    e.preventDefault();
-                }
-            });
+        btn && btn.addEventListener('click', function () {
+            applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
         });
     })();
     </script>

@@ -1,695 +1,1080 @@
 <?php
 // =====================================================
-// INDEX - CORRIGIDO E PADRONIZADO
-// Arquivo: index.php (RAIZ DO PROJETO)
+// PÁGINA INICIAL
+// Arquivo: index.php
 // =====================================================
 
-// Inicia a sessão se não estiver ativa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// =====================================================
-// DEFINIÇÃO DA BASE_URL
-// =====================================================
-if (!defined('BASE_URL')) {
-    $protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? 'https://' : 'http://';
-    $host = $_SERVER['HTTP_HOST'];
-    $script_name = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME']));
-    
-    if ($script_name == '/' || $script_name == '\\') {
-        $base_path = '/';
-    } else {
-        $base_path = rtrim($script_name, '/') . '/';
-    }
-    
-    define('BASE_URL', $protocol . $host . $base_path);
-}
-
-// =====================================================
-// INCLUDES - CAMINHO CORRETO PARA A RAIZ
-// =====================================================
-// Como o index.php está na raiz, usamos 'includes/' diretamente
-require_once __DIR__ . '/includes/funcoes.php';
 require_once __DIR__ . '/includes/conexao.php';
-require_once __DIR__ . '/includes/verifica_login.php';
+require_once __DIR__ . '/includes/funcoes.php';
+require_once __DIR__ . '/includes/avatar_helper.php';
 
-// =====================================================
-// VERIFICA SE A CONEXÃO EXISTE
-// =====================================================
-if (!isset($conn)) {
-    // Tenta usar $pdo como fallback
-    if (isset($pdo)) {
-        $conn = $pdo;
-    } else {
-        die("Erro: Conexão com o banco de dados não disponível.");
-    }
-}
+$categorias = get_categorias($pdo);
 
-// =====================================================
-// BUSCA CATEGORIAS
-// =====================================================
-$categorias = get_categorias($conn);
+$stmt = $pdo->query("
+    SELECT n.*, u.nome AS autor_nome, c.nome AS categoria_nome, c.icone AS categoria_icone
+    FROM noticias n
+    INNER JOIN usuarios u ON n.autor = u.id
+    LEFT JOIN categorias c ON n.categoria_id = c.id
+    ORDER BY n.data DESC
+");
+$noticias = $stmt->fetchAll();
 
-// =====================================================
-// BUSCA NOTÍCIAS
-// =====================================================
-try {
-    $stmt = $conn->prepare("
-        SELECT n.*, u.nome AS autor_nome, u.foto AS autor_foto,
-               c.nome AS categoria_nome, c.icone AS categoria_icone
-        FROM noticias n
-        INNER JOIN usuarios u ON n.autor = u.id
-        LEFT JOIN categorias c ON n.categoria_id = c.id
-        ORDER BY n.data DESC
-    ");
-    $stmt->execute();
-    $noticias = $stmt->fetchAll(PDO::FETCH_ASSOC);
-} catch(PDOException $e) {
-    $noticias = [];
-    error_log("Erro ao buscar notícias: " . $e->getMessage());
-}
+$destaque = $noticias[0] ?? null;
+$demais   = array_slice($noticias, 1);
 
-// =====================================================
-// ORGANIZAÇÃO ESTILO TELEJORNAL
-// =====================================================
-$manchete_principal = $noticias[0] ?? null;
-$manchete_secundaria = $noticias[1] ?? null;
-$manchetes_pequenas = array_slice($noticias, 2, 4);
-$demais_noticias = array_slice($noticias, 6);
-
-// =====================================================
-// FUNÇÕES AUXILIARES (FALLBACK)
-// =====================================================
-if (!function_exists('resumo_texto')) {
-    function resumo_texto($texto, $limite = 100) {
-        $texto = strip_tags($texto);
-        if (strlen($texto) > $limite) {
-            $texto = substr($texto, 0, $limite) . '...';
-        }
-        return $texto;
-    }
-}
-
-if (!function_exists('formatar_data')) {
-    function formatar_data($data) {
-        if (empty($data)) return '';
-        return date('d/m/Y H:i', strtotime($data));
-    }
-}
-
-if (!function_exists('escape')) {
-    function escape($texto) {
-        return htmlspecialchars($texto ?? '', ENT_QUOTES, 'UTF-8');
-    }
-}
-
-if (!function_exists('usuario_logado')) {
-    function usuario_logado() {
-        return isset($_SESSION['usuario_id']);
-    }
-}
-
-if (!function_exists('get_usuario_nome')) {
-    function get_usuario_nome() {
-        return $_SESSION['usuario_nome'] ?? 'Usuário';
-    }
+$usuario_logado = null;
+if (usuario_logado()) {
+    $usuario_logado = [
+        'nome' => get_usuario_nome(),
+        'foto' => get_usuario_foto()
+    ];
 }
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GGNews - Portal de Games & E-Sports</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/style.css">
+    <link rel="stylesheet" href="css/style.css">
 
     <style>
-        /* =============================================
-           CORREÇÃO DO TEMA CLARO/ESCURO
-        ============================================= */
-        :root {
-            --bg-body: #0c0c10;
-            --bg-card: #1a1a2e;
-            --bg-card-hover: #252540;
-            --bg-header: #121218;
-            --bg-surface: #1a1a22;
-            --text-primary: #eeeaf8;
-            --text-secondary: #b8b5d0;
-            --text-muted: #5e5c76;
-            --border: #252535;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --shadow: 0 4px 20px rgba(0,0,0,0.4);
-        }
+        /* =====================================================
+           ESTILOS PARA PÁGINA INICIAL
+           ===================================================== */
 
-        [data-theme="light"] {
-            --bg-body: #f5f3f0;
-            --bg-card: #ffffff;
-            --bg-card-hover: #f0edf0;
-            --bg-header: #ffffff;
-            --bg-surface: #f8f6f4;
-            --text-primary: #1a1a1a;
-            --text-secondary: #4a4a5a;
-            --text-muted: #8888a0;
-            --border: #e5e0db;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --shadow: 0 4px 20px rgba(0,0,0,0.08);
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background: var(--bg-body);
-            color: var(--text-primary);
-            transition: background 0.3s ease, color 0.3s ease;
-            margin: 0;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: 'Inter', sans-serif;
+            background: #f8f4f0;
+            color: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
         }
 
-        .site-header {
-            background: var(--bg-header);
-            border-color: var(--border);
-            transition: background 0.3s ease;
+        [data-theme="dark"] body {
+            background: #0c0c10;
+            color: #eeeaf8;
         }
 
         .sidebar {
-            background: var(--bg-card);
-            border-right: 1px solid var(--border);
-            transition: background 0.3s ease;
-            transform: translateX(-100%);
+            width: 260px;
+            background: #ffffff;
+            border-right: 1px solid #e8e2da;
+            padding: 1.25rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
         }
 
-        .sidebar.mobile-open {
-            transform: translateX(0);
+        [data-theme="dark"] .sidebar {
+            background: #101015;
+            border-color: #252535;
         }
 
         @media (min-width: 768px) {
             .sidebar {
-                transform: translateX(0);
+                display: flex !important;
             }
+        }
+
+        .sidebar.mobile-open {
+            display: flex !important;
         }
 
         .sidebar-overlay {
             display: none;
             position: fixed;
             inset: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 40;
+            background: rgba(0,0,0,0.4);
+            z-index: 49;
+            backdrop-filter: blur(2px);
         }
 
         .sidebar-overlay.active {
             display: block;
         }
 
-        .card-news {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            transition: background 0.3s ease, border-color 0.3s ease, transform 0.2s ease;
-        }
-
-        .card-news:hover {
-            background: var(--bg-card-hover);
-            transform: translateY(-4px);
-            box-shadow: var(--shadow);
-        }
-
-        .badge-cat {
-            display: inline-block;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            background: var(--accent);
-            color: #fff;
-        }
-
-        .text-primary { color: var(--text-primary); }
-        .text-secondary { color: var(--text-secondary); }
-        .text-muted { color: var(--text-muted); }
-        .border-custom { border-color: var(--border); }
-
-        .nav-link {
-            color: var(--text-secondary);
-            transition: color 0.2s ease, background 0.2s ease;
+        .sidebar-logo {
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
             text-decoration: none;
+            margin-bottom: 1.75rem;
         }
 
-        .nav-link:hover, .nav-link.active {
-            color: var(--text-primary);
-            background: rgba(124, 58, 237, 0.1);
-        }
-
-        .sidebar-section-label {
-            color: var(--text-muted);
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-
-        .theme-toggle-btn {
-            color: var(--text-secondary);
-            background: none;
-            border: none;
-            cursor: pointer;
-            width: 100%;
-        }
-
-        .theme-toggle-btn:hover {
-            color: var(--text-primary);
-        }
-
-        .toggle-track {
-            background: var(--border);
-            width: 2.5rem;
-            height: 1.25rem;
-            border-radius: 999px;
-            position: relative;
+        .logo-icon {
+            width: 38px;
+            height: 38px;
+            background: #ede9fe;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
             flex-shrink: 0;
         }
 
+        [data-theme="dark"] .logo-icon {
+            background: #1c1831;
+        }
+
+        .logo-text {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #1a1a1a;
+            line-height: 1.1;
+        }
+
+        [data-theme="dark"] .logo-text {
+            color: #eeeaf8;
+        }
+
+        .logo-text span {
+            color: #7c3aed;
+        }
+
+        .logo-tag {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: #9ca3af;
+            letter-spacing: 0.02em;
+        }
+
+        [data-theme="dark"] .logo-tag {
+            color: #5e5c76;
+        }
+
+        .sidebar-section-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            padding: 0.75rem 0.75rem 0.35rem;
+        }
+
+        [data-theme="dark"] .sidebar-section-label {
+            color: #5e5c76;
+        }
+
+        .sidebar-nav,
+        .sidebar-categories {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #5f6378;
+            text-decoration: none;
+            position: relative;
+            transition: all 0.18s ease;
+        }
+
+        [data-theme="dark"] .nav-link {
+            color: #918fac;
+        }
+
+        .nav-link:hover {
+            background: #f8f4f0;
+            color: #1a1a1a;
+        }
+
+        [data-theme="dark"] .nav-link:hover {
+            background: #1a1a22;
+            color: #eeeaf8;
+        }
+
+        .nav-link.active {
+            background: #ede9fe;
+            color: #7c3aed;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .nav-link.active {
+            background: #1c1831;
+            color: #a78bfa;
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 18%;
+            height: 64%;
+            width: 3px;
+            background: #7c3aed;
+            border-radius: 0 3px 3px 0;
+        }
+
+        .nav-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: #f8f4f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        [data-theme="dark"] .nav-icon {
+            background: #1a1a22;
+        }
+
+        .cat-icon {
+            width: 22px;
+            text-align: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .nav-link-danger {
+            color: #ef4444 !important;
+        }
+
+        .nav-link-danger:hover {
+            background: #fef2f2 !important;
+            color: #dc2626 !important;
+        }
+
+        [data-theme="dark"] .nav-link-danger:hover {
+            background: #2d0a0a !important;
+        }
+
+        .theme-toggle-wrap {
+            padding-top: 0.75rem;
+            border-top: 1px solid #e8e2da;
+            margin-top: auto;
+        }
+
+        [data-theme="dark"] .theme-toggle-wrap {
+            border-color: #252535;
+        }
+
+        .theme-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: background 0.18s ease;
+            text-align: left;
+        }
+
+        .theme-toggle-btn:hover {
+            background: #f8f4f0;
+        }
+
+        [data-theme="dark"] .theme-toggle-btn:hover {
+            background: #1a1a22;
+        }
+
+        .toggle-track {
+            position: relative;
+            width: 38px;
+            height: 22px;
+            background: #e8e2da;
+            border-radius: 99px;
+            flex-shrink: 0;
+            transition: background 0.25s ease;
+        }
+
         [data-theme="dark"] .toggle-track {
-            background: var(--accent);
+            background: #7c3aed;
         }
 
         .toggle-thumb {
-            background: #fff;
-            width: 1rem;
-            height: 1rem;
-            border-radius: 999px;
             position: absolute;
-            top: 0.125rem;
-            left: 0.125rem;
-            transition: transform 0.2s ease;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+            transition: transform 0.25s ease;
         }
 
-        [data-theme="light"] .toggle-thumb {
-            transform: translateX(1.25rem);
+        [data-theme="dark"] .toggle-thumb {
+            transform: translateX(16px);
+        }
+
+        .toggle-icons {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .toggle-label {
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: #5f6378;
+        }
+
+        [data-theme="dark"] .toggle-label {
+            color: #918fac;
+        }
+
+        .sidebar-footer-tag {
+            font-size: 0.7rem;
+            color: #9ca3af;
+            text-align: center;
+            margin: 0.5rem 0 0;
+        }
+
+        [data-theme="dark"] .sidebar-footer-tag {
+            color: #5e5c76;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 0;
+            min-width: 0;
+        }
+
+        @media (min-width: 768px) {
+            .main-content {
+                margin-left: 260px;
+            }
+        }
+
+        .site-header {
+            background: #ffffff;
+            border-bottom: 1px solid #e8e2da;
+            padding: 0.75rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 30;
+        }
+
+        [data-theme="dark"] .site-header {
+            background: #121218;
+            border-color: #252535;
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .menu-toggle {
+            font-size: 1.5rem;
+            background: transparent;
+            border: none;
+            color: #1a1a1a;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 0.5rem;
+            display: block;
+        }
+
+        [data-theme="dark"] .menu-toggle {
+            color: #eeeaf8;
+        }
+
+        @media (min-width: 768px) {
+            .menu-toggle {
+                display: none;
+            }
+        }
+
+        .header-logo-mobile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            text-decoration: none;
+        }
+
+        [data-theme="dark"] .header-logo-mobile {
+            color: #eeeaf8;
+        }
+
+        .header-logo-mobile span {
+            color: #7c3aed;
+        }
+
+        @media (min-width: 768px) {
+            .header-logo-mobile {
+                display: none;
+            }
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        /* ── AVATAR NO HEADER ───────────────────────────────────── */
+        .header-nav .avatar-img {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e8e2da;
+        }
+
+        [data-theme="dark"] .header-nav .avatar-img {
+            border-color: #252535;
+        }
+
+        .header-nav .avatar-fallback {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ede9fe;
+            color: #5b21b6;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: 2px solid #e8e2da;
+        }
+
+        [data-theme="dark"] .header-nav .avatar-fallback {
+            background: #1c1831;
+            color: #c4b5fd;
+            border-color: #252535;
+        }
+
+        .header-nav .nome {
+            color: #5f6378;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        @media (min-width: 640px) {
+            .header-nav .nome {
+                display: inline;
+            }
+        }
+
+        [data-theme="dark"] .header-nav .nome {
+            color: #918fac;
         }
 
         .btn-primary {
-            background: var(--accent);
+            background: #7c3aed;
             color: #fff;
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 1rem;
             border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
             text-decoration: none;
+            border: none;
+            cursor: pointer;
             transition: background 0.2s ease;
-            display: inline-block;
         }
 
         .btn-primary:hover {
-            background: var(--accent-light);
-            color: #fff;
+            background: #6d28d9;
         }
 
-        .gradient-overlay {
-            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.3) 50%, transparent 100%);
+        .btn-sair {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .btn-sair:hover {
+            color: #ef4444;
+        }
+
+        [data-theme="dark"] .btn-sair {
+            color: #5e5c76;
+        }
+
+        .hero-news {
+            position: relative;
+            border-radius: 1rem;
+            overflow: hidden;
+            height: 400px;
+            display: flex;
+            align-items: flex-end;
+            margin-bottom: 2.5rem;
+            background: linear-gradient(135deg, #ede9fe, #f8f4f0);
+        }
+
+        [data-theme="dark"] .hero-news {
+            background: linear-gradient(135deg, #1c1831, #1a1a22);
+        }
+
+        .hero-news img {
             position: absolute;
             inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
         }
 
-        [data-theme="light"] .gradient-overlay {
-            background: linear-gradient(to top, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
+        .hero-news:hover img {
+            transform: scale(1.05);
         }
 
-        .img-placeholder {
-            background: linear-gradient(135deg, var(--accent), var(--accent-light));
-            opacity: 0.3;
+        .hero-gradient {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(255,255,255,0.93) 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
         }
 
-        .line-clamp-2 {
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
+        [data-theme="dark"] .hero-gradient {
+            background: linear-gradient(to top, rgba(12,12,16,0.95) 0%, rgba(12,12,16,0.4) 55%, transparent 100%);
+        }
+
+        .hero-content {
+            position: relative;
+            padding: 2rem;
+            width: 100%;
+        }
+
+        .hero-content .badge-cat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: #ede9fe;
+            color: #5b21b6;
+            padding: 0.2rem 0.75rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .hero-content .badge-cat {
+            background: #1c1831;
+            color: #c4b5fd;
+        }
+
+        .hero-content h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin-top: 0.75rem;
+        }
+
+        [data-theme="dark"] .hero-content h2 {
+            color: #eeeaf8;
+        }
+
+        .hero-content h2:hover {
+            color: #7c3aed;
+        }
+
+        .hero-content p {
+            color: #5f6378;
+            margin-top: 0.5rem;
+            max-width: 600px;
+            font-size: 1.05rem;
+        }
+
+        [data-theme="dark"] .hero-content p {
+            color: #918fac;
+        }
+
+        .hero-content .meta {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+            color: #9ca3af;
+        }
+
+        [data-theme="dark"] .hero-content .meta {
+            color: #5e5c76;
+        }
+
+        .hero-content a {
+            text-decoration: none;
+        }
+
+        .noticias-section {
+            margin-top: 2.5rem;
+        }
+
+        .section-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            padding-left: 1rem;
+            border-left: 4px solid #7c3aed;
+            margin-bottom: 1.5rem;
+        }
+
+        [data-theme="dark"] .section-title {
+            color: #eeeaf8;
+        }
+
+        .noticia-list-item {
+            display: flex;
+            gap: 1.5rem;
+            background: #ffffff;
+            border: 1px solid #e8e2da;
+            border-radius: 1rem;
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+
+        [data-theme="dark"] .noticia-list-item {
+            background: #121218;
+            border-color: #252535;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.35);
+        }
+
+        .noticia-list-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 28px rgba(0,0,0,0.10);
+            border-color: #ede9fe;
+        }
+
+        [data-theme="dark"] .noticia-list-item:hover {
+            border-color: #1c1831;
+        }
+
+        .noticia-list-image {
+            width: 220px;
+            min-height: 140px;
+            border-radius: 0.5rem;
             overflow: hidden;
+            flex-shrink: 0;
+            background: #f8f4f0;
         }
 
-        .line-clamp-3 {
+        [data-theme="dark"] .noticia-list-image {
+            background: #1a1a22;
+        }
+
+        .noticia-list-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.5s ease;
+        }
+
+        .noticia-list-item:hover .noticia-list-image img {
+            transform: scale(1.05);
+        }
+
+        .noticia-list-image-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            background: linear-gradient(135deg, #ede9fe, #f8f4f0);
+        }
+
+        [data-theme="dark"] .noticia-list-image-placeholder {
+            background: linear-gradient(135deg, #1c1831, #1a1a22);
+        }
+
+        .noticia-list-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+
+        .noticia-list-content .badge-cat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: #ede9fe;
+            color: #5b21b6;
+            padding: 0.15rem 0.6rem;
+            border-radius: 99px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            align-self: flex-start;
+            margin-bottom: 0.5rem;
+        }
+
+        [data-theme="dark"] .noticia-list-content .badge-cat {
+            background: #1c1831;
+            color: #c4b5fd;
+        }
+
+        .noticia-list-content h3 {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            margin: 0 0 0.5rem 0;
+            line-height: 1.4;
+            transition: color 0.2s ease;
+        }
+
+        [data-theme="dark"] .noticia-list-content h3 {
+            color: #eeeaf8;
+        }
+
+        .noticia-list-item:hover .noticia-list-content h3 {
+            color: #7c3aed;
+        }
+
+        [data-theme="dark"] .noticia-list-item:hover .noticia-list-content h3 {
+            color: #a78bfa;
+        }
+
+        .noticia-list-content p {
+            color: #5f6378;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            flex: 1;
             display: -webkit-box;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
 
-        .logo-text {
-            color: var(--text-primary);
+        [data-theme="dark"] .noticia-list-content p {
+            color: #918fac;
         }
 
-        .sidebar-logo {
-            text-decoration: none;
+        .noticia-list-footer {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid #e8e2da;
+            font-size: 0.8rem;
+            color: #9ca3af;
         }
 
-        #menu-toggle {
-            background: transparent;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: var(--text-primary);
-            padding: 0.375rem;
-            border-radius: 0.5rem;
+        [data-theme="dark"] .noticia-list-footer {
+            border-color: #252535;
+            color: #5e5c76;
         }
 
-        #menu-toggle:hover {
-            background: rgba(124, 58, 237, 0.1);
+        .noticia-list-footer .autor {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .sem-noticias {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #9ca3af;
+        }
+
+        [data-theme="dark"] .sem-noticias {
+            color: #5e5c76;
+        }
+
+        .site-footer {
+            margin-top: 4rem;
+            border-top: 1px solid #e8e2da;
+            background: #ffffff;
+            padding: 2rem 1rem;
+            text-align: center;
+        }
+
+        [data-theme="dark"] .site-footer {
+            background: #121218;
+            border-color: #252535;
+        }
+
+        .site-footer p {
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+
+        [data-theme="dark"] .site-footer p {
+            color: #5e5c76;
+        }
+
+        .site-footer span {
+            color: #7c3aed;
+            font-weight: 700;
+        }
+
+        @media (max-width: 768px) {
+            .noticia-list-item {
+                flex-direction: column;
+                padding: 1rem;
+            }
+
+            .noticia-list-image {
+                width: 100%;
+                height: 180px;
+            }
+
+            .hero-news {
+                height: 300px;
+            }
+
+            .hero-content h2 {
+                font-size: 1.5rem;
+            }
+
+            .hero-content p {
+                font-size: 0.9rem;
+            }
+
+            .hero-content {
+                padding: 1.25rem;
+            }
+
+            .header-nav .nome {
+                display: none;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-news {
+                height: 250px;
+            }
+
+            .hero-content h2 {
+                font-size: 1.2rem;
+            }
+
+            .hero-content .meta {
+                font-size: 0.75rem;
+                flex-wrap: wrap;
+            }
+
+            .noticia-list-content h3 {
+                font-size: 1rem;
+            }
         }
     </style>
 
     <script>
         (function() {
-            var t = localStorage.getItem('gg-theme') || 'dark';
+            var t = localStorage.getItem('gg-theme') || 'light';
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
 </head>
-<body class="min-h-screen flex">
+<body>
 
-    <!-- Overlay mobile -->
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-    <!-- ══════════════════════════════════════════════════════
-         SIDEBAR
-    ══════════════════════════════════════════════════════ -->
-    <aside id="sidebar" class="sidebar w-64 fixed h-full z-50 flex-col p-5 overflow-y-auto hidden md:flex" style="display: none;">
-
-        <div class="mb-7">
-            <a href="<?= BASE_URL ?>" class="sidebar-logo flex items-center gap-2">
-                <div class="logo-icon text-3xl">🎮</div>
+    <aside id="sidebar" class="sidebar">
+        <div>
+            <a href="index.php" class="sidebar-logo">
+                <div class="logo-icon">🎮</div>
                 <div>
-                    <div class="logo-text text-xl font-bold">
-                        <span style="color:var(--accent)">GG</span>News
-                    </div>
-                    <span class="logo-tag text-xs" style="color:var(--text-muted)">Games & E-Sports</span>
+                    <div class="logo-text"><span>GG</span>News</div>
+                    <span class="logo-tag">Games & E-Sports</span>
                 </div>
             </a>
         </div>
 
-        <div class="sidebar-section-label mb-2">Menu</div>
-        <nav class="sidebar-nav mb-4">
-            <a href="<?= BASE_URL ?>" class="nav-link active">
-                <span>🏠</span> Início
+        <div class="sidebar-section-label">Menu</div>
+        <nav class="sidebar-nav">
+            <a href="index.php" class="nav-link active">
+                <span class="nav-icon">🏠</span>
+                Início
             </a>
-            <a href="<?= BASE_URL ?>pages/noticias/dashboard.php" class="nav-link">
-                <span>📋</span> Painel
+            <a href="pages/noticias/dashboard.php" class="nav-link">
+                <span class="nav-icon">📋</span>
+                Painel
             </a>
 
             <?php if (usuario_logado()): ?>
-                <a href="<?= BASE_URL ?>pages/usuario/editar_usuario.php" class="nav-link">
-                    <span>👤</span> Minha Conta
+                <a href="pages/usuario/editar_usuario.php" class="nav-link">
+                    <span class="nav-icon">👤</span>
+                    Minha Conta
                 </a>
-                <a href="<?= BASE_URL ?>pages/auth/logout.php" class="nav-link" style="color:#ef4444;">
-                    <span>🚪</span> Sair
+                <a href="pages/auth/logout.php" class="nav-link nav-link-danger">
+                    <span class="nav-icon">🚪</span>
+                    Sair
                 </a>
             <?php else: ?>
-                <a href="<?= BASE_URL ?>pages/auth/login.php" class="nav-link">
-                    <span>🔐</span> Login
+                <a href="pages/auth/login.php" class="nav-link">
+                    <span class="nav-icon">🔐</span>
+                    Login
                 </a>
-                <a href="<?= BASE_URL ?>pages/auth/cadastro.php" class="nav-link">
-                    <span>📝</span> Cadastrar
+                <a href="pages/auth/cadastro.php" class="nav-link">
+                    <span class="nav-icon">📝</span>
+                    Cadastrar
                 </a>
             <?php endif; ?>
         </nav>
 
         <?php if (!empty($categorias)): ?>
-        <div class="sidebar-section-label mb-2">Categorias</div>
-        <nav class="sidebar-categories mb-4">
+        <div class="sidebar-section-label">Categorias</div>
+        <nav class="sidebar-categories">
             <?php foreach ($categorias as $cat): ?>
-                <a href="<?= BASE_URL ?>pages/categorias/categoria.php?slug=<?= $cat['slug'] ?? '' ?>" class="nav-link">
-                    <span><?= $cat['icone'] ?? '📰' ?></span>
-                    <?= escape($cat['nome'] ?? 'Sem categoria') ?>
+                <a href="pages/categorias/categoria.php?slug=<?= $cat['slug'] ?>" class="nav-link">
+                    <span class="cat-icon"><?= $cat['icone'] ?></span>
+                    <?= escape($cat['nome']) ?>
                 </a>
             <?php endforeach; ?>
         </nav>
         <?php endif; ?>
 
-        <div class="theme-toggle-wrap mt-auto pt-4 border-t" style="border-color:var(--border)">
-            <button id="theme-toggle" class="theme-toggle-btn flex items-center gap-3 w-full px-3 py-2 rounded-lg" aria-label="Alternar tema">
-                <div class="toggle-track">
+        <div class="theme-toggle-wrap">
+            <button id="theme-toggle" class="theme-toggle-btn" aria-label="Alternar tema">
+                <div class="toggle-track" id="toggle-track">
                     <div class="toggle-thumb"></div>
                 </div>
                 <span class="toggle-icons" id="theme-icon">🌙</span>
-                <span class="toggle-label text-sm" id="theme-label">Modo Escuro</span>
+                <span class="toggle-label" id="theme-label">Modo Escuro</span>
             </button>
-            <p class="sidebar-footer-tag text-xs mt-3" style="color:var(--text-muted)">GGNews &copy; <?= date('Y') ?></p>
+            <p class="sidebar-footer-tag">GGNews &copy; <?= date('Y') ?></p>
         </div>
-
     </aside>
 
-    <!-- ══════════════════════════════════════════════════════
-         CONTEÚDO PRINCIPAL
-    ══════════════════════════════════════════════════════ -->
-    <div class="flex-1 md:ml-64 min-w-0">
+    <div class="main-content">
 
-        <!-- HEADER -->
-        <header class="site-header sticky top-0 z-30 px-4 py-3 border-b" style="background:var(--bg-header); border-color:var(--border)">
-            <div class="max-w-7xl mx-auto flex items-center justify-between">
-
-                <div class="flex items-center gap-3">
-                    <button id="menu-toggle"
-                            class="md:hidden text-2xl p-1.5 rounded-lg transition"
-                            style="color:var(--text-primary); background:transparent;"
-                            aria-label="Abrir menu">
-                        ☰
-                    </button>
-                    <a href="<?= BASE_URL ?>" class="flex items-center gap-2 md:hidden text-lg font-bold no-underline" style="color:var(--text-primary)">
-                        🎮 <span style="color:var(--accent)">GG</span>News
+        <header class="site-header">
+            <div class="header-inner">
+                <div class="header-left">
+                    <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menu">☰</button>
+                    <a href="index.php" class="header-logo-mobile">
+                        🎮 <span>GG</span>News
                     </a>
                 </div>
 
-                <nav class="flex items-center gap-3">
+                <nav class="header-nav">
                     <?php if (usuario_logado()): ?>
-                        <span class="hidden sm:inline text-sm" style="color:var(--text-secondary)">
-                            Olá, <?= escape(get_usuario_nome()) ?>
-                        </span>
-                        <a href="<?= BASE_URL ?>pages/noticias/dashboard.php" class="btn-primary text-sm">
-                            Painel
-                        </a>
-                        <a href="<?= BASE_URL ?>pages/auth/logout.php"
-                           class="text-sm no-underline" style="color:var(--text-muted)">Sair</a>
+                        <!-- AVATAR DO USUÁRIO LOGADO -->
+                        <?php 
+                        $foto_usuario = get_usuario_foto();
+                        if ($foto_usuario): ?>
+                            <img src="uploads/<?= escape($foto_usuario) ?>" class="avatar-img" alt="Avatar">
+                        <?php else: ?>
+                            <div class="avatar-fallback"><?= get_avatar_initials(get_usuario_nome()) ?></div>
+                        <?php endif; ?>
+                        <span class="nome">Olá, <?= escape(get_usuario_nome()) ?></span>
+                        <a href="pages/noticias/dashboard.php" class="btn-primary">Painel</a>
+                        <a href="pages/auth/logout.php" class="btn-sair">Sair</a>
                     <?php else: ?>
-                        <a href="<?= BASE_URL ?>pages/auth/login.php"
-                           class="text-sm no-underline" style="color:var(--text-secondary)">Login</a>
-                        <a href="<?= BASE_URL ?>pages/auth/cadastro.php" class="btn-primary text-sm">
-                            Cadastrar
-                        </a>
+                        <a href="pages/auth/login.php" class="btn-sair" style="color:#7c3aed;">Login</a>
+                        <a href="pages/auth/cadastro.php" class="btn-primary">Cadastrar</a>
                     <?php endif; ?>
                 </nav>
-
             </div>
         </header>
 
-        <!-- ══════════════════════════════════════════════════════
-             MAIN - LAYOUT ESTILO TELEJORNAL
-        ══════════════════════════════════════════════════════ -->
-        <main class="max-w-7xl mx-auto px-4 py-8">
+        <main style="max-width:1200px; margin:0 auto; padding:2rem 1rem;">
 
-            <?php if ($manchete_principal): ?>
-            <!-- MANCHETE PRINCIPAL -->
-            <section class="mb-6">
-                <a href="<?= BASE_URL ?>pages/noticias/noticia.php?id=<?= $manchete_principal['id'] ?>" class="block group no-underline">
-                    <div class="card-news rounded-2xl overflow-hidden">
-                        <div class="grid grid-cols-1 lg:grid-cols-5">
-                            <div class="lg:col-span-3 h-72 lg:h-[440px] relative overflow-hidden">
-                                <?php if (!empty($manchete_principal['imagem'])): ?>
-                                    <img src="<?= escape($manchete_principal['imagem']) ?>"
-                                         alt="<?= escape($manchete_principal['titulo']) ?>"
-                                         class="w-full h-full object-cover group-hover:scale-105 transition duration-700">
-                                <?php else: ?>
-                                    <div class="w-full h-full flex items-center justify-center img-placeholder">
-                                        <span class="text-7xl opacity-50">🎮</span>
-                                    </div>
-                                <?php endif; ?>
-                                <div class="gradient-overlay"></div>
-                            </div>
-                            <div class="lg:col-span-2 p-6 lg:p-8 flex flex-col justify-center">
-                                <span class="badge-cat inline-block mb-3">
-                                    <?= $manchete_principal['categoria_icone'] ?? '📰' ?>
-                                    <?= escape($manchete_principal['categoria_nome'] ?? 'Destaque') ?>
-                                </span>
-                                <h2 class="text-2xl md:text-3xl lg:text-4xl font-bold leading-tight group-hover:text-purple-400 transition"
-                                    style="color:var(--text-primary)">
-                                    <?= escape($manchete_principal['titulo']) ?>
-                                </h2>
-                                <p class="mt-3 text-base lg:text-lg leading-relaxed" style="color:var(--text-secondary)">
-                                    <?= escape(resumo_texto($manchete_principal['noticia'] ?? '', 200)) ?>
-                                </p>
-                                <div class="flex items-center gap-3 mt-4 text-sm" style="color:var(--text-muted)">
-                                    <span>Por <?= escape($manchete_principal['autor_nome'] ?? 'Desconhecido') ?></span>
-                                    <span>•</span>
-                                    <span><?= formatar_data($manchete_principal['data'] ?? date('Y-m-d H:i:s')) ?></span>
-                                </div>
+            <?php if ($destaque): ?>
+                <a href="pages/noticias/noticia.php?id=<?= $destaque['id'] ?>" style="text-decoration:none;">
+                    <div class="hero-news">
+                        <?php if ($destaque['imagem']): ?>
+                            <img src="<?= escape($destaque['imagem']) ?>" alt="<?= escape($destaque['titulo']) ?>">
+                        <?php endif; ?>
+                        <div class="hero-gradient"></div>
+                        <div class="hero-content">
+                            <span class="badge-cat">
+                                <?= $destaque['categoria_icone'] ?? '📰' ?>
+                                <?= escape($destaque['categoria_nome'] ?? 'Destaque') ?>
+                            </span>
+                            <h2><?= escape($destaque['titulo']) ?></h2>
+                            <p><?= escape(resumo_texto($destaque['noticia'], 180)) ?></p>
+                            <div class="meta">
+                                <span>Por <?= escape($destaque['autor_nome']) ?></span>
+                                <span>•</span>
+                                <span><?= formatar_data($destaque['data']) ?></span>
                             </div>
                         </div>
                     </div>
                 </a>
-            </section>
             <?php endif; ?>
 
-            <!-- MANCHETE SECUNDÁRIA + PEQUENAS -->
-            <?php if ($manchete_secundaria || !empty($manchetes_pequenas)): ?>
-            <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+            <section class="noticias-section">
+                <h2 class="section-title">Últimas Notícias</h2>
 
-                <?php if ($manchete_secundaria): ?>
-                <div class="lg:col-span-2">
-                    <a href="<?= BASE_URL ?>pages/noticias/noticia.php?id=<?= $manchete_secundaria['id'] ?>" class="block group no-underline h-full">
-                        <div class="card-news rounded-xl overflow-hidden h-full flex flex-col">
-                            <div class="h-56 lg:h-64 overflow-hidden relative">
-                                <?php if (!empty($manchete_secundaria['imagem'])): ?>
-                                    <img src="<?= escape($manchete_secundaria['imagem']) ?>"
-                                         alt="<?= escape($manchete_secundaria['titulo']) ?>"
-                                         class="w-full h-full object-cover group-hover:scale-105 transition duration-500">
+                <?php if (empty($demais) && !$destaque): ?>
+                    <div class="sem-noticias">Nenhuma notícia publicada ainda.</div>
+                <?php else: ?>
+                    <?php foreach ($demais as $noticia): ?>
+                        <a href="pages/noticias/noticia.php?id=<?= $noticia['id'] ?>" class="noticia-list-item">
+                            <div class="noticia-list-image">
+                                <?php if ($noticia['imagem']): ?>
+                                    <img src="<?= escape($noticia['imagem']) ?>" alt="<?= escape($noticia['titulo']) ?>">
                                 <?php else: ?>
-                                    <div class="w-full h-full flex items-center justify-center img-placeholder">
-                                        <span class="text-5xl opacity-50">🎮</span>
+                                    <div class="noticia-list-image-placeholder">
+                                        <?= $noticia['categoria_icone'] ?? '🎮' ?>
                                     </div>
                                 <?php endif; ?>
-                                <div class="gradient-overlay"></div>
                             </div>
-                            <div class="p-5 flex-1 flex flex-col">
-                                <span class="badge-cat text-xs inline-block mb-2 self-start">
-                                    <?= $manchete_secundaria['categoria_icone'] ?? '📰' ?>
-                                    <?= escape($manchete_secundaria['categoria_nome'] ?? '') ?>
-                                </span>
-                                <h3 class="text-xl font-bold group-hover:text-purple-400 transition" style="color:var(--text-primary)">
-                                    <?= escape($manchete_secundaria['titulo']) ?>
-                                </h3>
-                                <p class="text-sm mt-2 flex-1" style="color:var(--text-secondary)">
-                                    <?= escape(resumo_texto($manchete_secundaria['noticia'] ?? '', 140)) ?>
-                                </p>
-                                <div class="flex items-center justify-between mt-3 text-xs" style="color:var(--text-muted)">
-                                    <span><?= escape($manchete_secundaria['autor_nome'] ?? 'Desconhecido') ?></span>
-                                    <span><?= formatar_data($manchete_secundaria['data'] ?? date('Y-m-d H:i:s')) ?></span>
-                                </div>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-                <?php endif; ?>
-
-                <?php if (!empty($manchetes_pequenas)): ?>
-                <div class="flex flex-col gap-4">
-                    <?php foreach ($manchetes_pequenas as $noticia): ?>
-                        <a href="<?= BASE_URL ?>pages/noticias/noticia.php?id=<?= $noticia['id'] ?>"
-                           class="block group no-underline">
-                            <div class="card-news rounded-xl overflow-hidden p-4 flex items-start gap-4 hover:bg-card-hover transition">
-                                <div class="w-24 h-20 flex-shrink-0 overflow-hidden rounded-lg">
-                                    <?php if (!empty($noticia['imagem'])): ?>
-                                        <img src="<?= escape($noticia['imagem']) ?>"
-                                             alt="<?= escape($noticia['titulo']) ?>"
-                                             class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
-                                    <?php else: ?>
-                                        <div class="w-full h-full flex items-center justify-center img-placeholder">
-                                            <span class="text-2xl">🎮</span>
-                                        </div>
-                                    <?php endif; ?>
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <span class="badge-cat text-[0.6rem] inline-block mb-1">
-                                        <?= $noticia['categoria_icone'] ?? '📰' ?>
-                                        <?= escape($noticia['categoria_nome'] ?? '') ?>
+                            <div class="noticia-list-content">
+                                <?php if ($noticia['categoria_nome']): ?>
+                                    <span class="badge-cat">
+                                        <?= $noticia['categoria_icone'] ?>
+                                        <?= escape($noticia['categoria_nome']) ?>
                                     </span>
-                                    <h4 class="text-sm font-semibold leading-snug group-hover:text-purple-400 transition line-clamp-2"
-                                        style="color:var(--text-primary)">
-                                        <?= escape($noticia['titulo']) ?>
-                                    </h4>
-                                    <span class="text-xs" style="color:var(--text-muted)"><?= formatar_data($noticia['data'] ?? date('Y-m-d H:i:s')) ?></span>
+                                <?php endif; ?>
+                                <h3><?= escape($noticia['titulo']) ?></h3>
+                                <p><?= escape(resumo_texto($noticia['noticia'], 200)) ?></p>
+                                <div class="noticia-list-footer">
+                                    <span class="autor">
+                                        <span>👤</span>
+                                        <?= escape($noticia['autor_nome']) ?>
+                                    </span>
+                                    <span>•</span>
+                                    <span><?= formatar_data($noticia['data']) ?></span>
                                 </div>
                             </div>
                         </a>
                     <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-
-            </section>
-            <?php endif; ?>
-
-            <!-- ÚLTIMAS NOTÍCIAS -->
-            <section>
-                <div class="flex items-center gap-3 mb-6 pb-3 border-b" style="border-color:var(--border)">
-                    <h2 class="text-2xl font-bold" style="color:var(--text-primary)">📰 Últimas Notícias</h2>
-                    <span class="text-sm" style="color:var(--text-muted)">(<?= count($demais_noticias) ?> notícias)</span>
-                </div>
-
-                <?php if (empty($demais_noticias) && !$manchete_principal): ?>
-                    <div class="text-center py-16" style="color:var(--text-muted)">
-                        <span class="text-6xl block mb-4">📭</span>
-                        <p class="text-lg">Nenhuma notícia publicada ainda.</p>
-                        <p class="text-sm">Seja o primeiro a compartilhar uma notícia!</p>
-                        <a href="<?= BASE_URL ?>pages/noticias/nova_noticia.php" class="btn-primary mt-4 inline-block">
-                            Publicar minha primeira notícia →
-                        </a>
-                    </div>
-                <?php else: ?>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                        <?php foreach ($demais_noticias as $noticia): ?>
-                            <a href="<?= BASE_URL ?>pages/noticias/noticia.php?id=<?= $noticia['id'] ?>"
-                               class="block group no-underline">
-                                <div class="card-news rounded-xl overflow-hidden hover:shadow-lg transition-all h-full flex flex-col">
-                                    <div class="h-48 overflow-hidden relative">
-                                        <?php if (!empty($noticia['imagem'])): ?>
-                                            <img src="<?= escape($noticia['imagem']) ?>"
-                                                 alt="<?= escape($noticia['titulo']) ?>"
-                                                 class="w-full h-full object-cover group-hover:scale-110 transition duration-500">
-                                        <?php else: ?>
-                                            <div class="w-full h-full flex items-center justify-center img-placeholder">
-                                                <span class="text-4xl opacity-50">🎮</span>
-                                            </div>
-                                        <?php endif; ?>
-                                    </div>
-                                    <div class="p-5 flex-1 flex flex-col">
-                                        <span class="badge-cat text-xs inline-block mb-2 self-start">
-                                            <?= $noticia['categoria_icone'] ?? '📰' ?>
-                                            <?= escape($noticia['categoria_nome'] ?? 'Geral') ?>
-                                        </span>
-                                        <h3 class="text-base font-bold leading-snug group-hover:text-purple-400 transition line-clamp-2"
-                                            style="color:var(--text-primary)">
-                                            <?= escape($noticia['titulo']) ?>
-                                        </h3>
-                                        <p class="text-sm mt-2 line-clamp-3 flex-1" style="color:var(--text-secondary)">
-                                            <?= escape(resumo_texto($noticia['noticia'] ?? '', 100)) ?>
-                                        </p>
-                                        <div class="flex items-center justify-between mt-4 text-xs" style="color:var(--text-muted)">
-                                            <span>Por <?= escape($noticia['autor_nome'] ?? 'Desconhecido') ?></span>
-                                            <span><?= formatar_data($noticia['data'] ?? date('Y-m-d H:i:s')) ?></span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </a>
-                        <?php endforeach; ?>
-                    </div>
                 <?php endif; ?>
             </section>
 
         </main>
 
-        <!-- FOOTER -->
-        <footer class="mt-16 border-t" style="background:var(--bg-surface); border-color:var(--border)">
-            <div class="max-w-7xl mx-auto px-4 py-8 text-center">
-                <p class="text-sm" style="color:var(--text-muted)">
-                    🎮 <span style="color:var(--accent); font-weight:700">GG</span>News
-                    &copy; <?= date('Y') ?> — Portal de Notícias de Games e E-Sports
-                </p>
-                <p class="text-xs mt-2" style="color:var(--text-muted)">
-                    Projeto acadêmico desenvolvido com PHP, MySQL e Tailwind CSS
-                </p>
-            </div>
+        <footer class="site-footer">
+            <p>🎮 <span>GG</span>News &copy; <?= date('Y') ?> — Portal de Notícias de Games e E-Sports</p>
         </footer>
 
     </div>
 
-    <!-- SCRIPTS -->
     <script>
     (function () {
-        var html = document.documentElement;
-        var btn = document.getElementById('theme-toggle');
-        var label = document.getElementById('theme-label');
-        var icon = document.getElementById('theme-icon');
+        var html    = document.documentElement;
+        var btn     = document.getElementById('theme-toggle');
+        var track   = document.getElementById('toggle-track');
+        var label   = document.getElementById('theme-label');
+        var icon    = document.getElementById('theme-icon');
         var sidebar = document.getElementById('sidebar');
         var overlay = document.getElementById('sidebar-overlay');
         var menuBtn = document.getElementById('menu-toggle');
@@ -698,43 +1083,33 @@ if (!function_exists('get_usuario_nome')) {
             html.setAttribute('data-theme', theme);
             localStorage.setItem('gg-theme', theme);
             if (theme === 'dark') {
+                track  && track.classList.add('is-dark');
                 if (label) label.textContent = 'Modo Claro';
-                if (icon) icon.textContent = '☀️';
+                if (icon)  icon.textContent  = '☀️';
             } else {
+                track  && track.classList.remove('is-dark');
                 if (label) label.textContent = 'Modo Escuro';
-                if (icon) icon.textContent = '🌙';
+                if (icon)  icon.textContent  = '🌙';
             }
         }
 
-        var savedTheme = localStorage.getItem('gg-theme') || 'dark';
-        applyTheme(savedTheme);
+        applyTheme(html.getAttribute('data-theme') || 'light');
 
-        if (btn) {
-            btn.addEventListener('click', function () {
-                var current = html.getAttribute('data-theme');
-                applyTheme(current === 'dark' ? 'light' : 'dark');
-            });
-        }
+        btn && btn.addEventListener('click', function () {
+            applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+        });
 
         function openSidebar() {
-            if (sidebar) {
-                sidebar.classList.add('mobile-open');
-                sidebar.style.display = 'flex';
-            }
-            if (overlay) overlay.classList.add('active');
-            if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+            sidebar.classList.add('mobile-open');
+            overlay.classList.add('active');
+            menuBtn && menuBtn.setAttribute('aria-expanded', 'true');
             document.body.style.overflow = 'hidden';
         }
 
         function closeSidebar() {
-            if (sidebar) {
-                sidebar.classList.remove('mobile-open');
-                if (window.innerWidth < 768) {
-                    sidebar.style.display = 'none';
-                }
-            }
-            if (overlay) overlay.classList.remove('active');
-            if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+            sidebar.classList.remove('mobile-open');
+            overlay.classList.remove('active');
+            menuBtn && menuBtn.setAttribute('aria-expanded', 'false');
             document.body.style.overflow = '';
         }
 
@@ -742,24 +1117,16 @@ if (!function_exists('get_usuario_nome')) {
             return window.innerWidth < 768;
         }
 
-        if (isMobile() && sidebar) {
-            sidebar.style.display = 'none';
-        }
+        menuBtn && menuBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            if (sidebar.classList.contains('mobile-open')) {
+                closeSidebar();
+            } else {
+                openSidebar();
+            }
+        });
 
-        if (menuBtn) {
-            menuBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                if (sidebar && sidebar.classList.contains('mobile-open')) {
-                    closeSidebar();
-                } else {
-                    openSidebar();
-                }
-            });
-        }
-
-        if (overlay) {
-            overlay.addEventListener('click', closeSidebar);
-        }
+        overlay && overlay.addEventListener('click', closeSidebar);
 
         document.addEventListener('keydown', function (e) {
             if (e.key === 'Escape' && isMobile()) {
@@ -768,12 +1135,9 @@ if (!function_exists('get_usuario_nome')) {
         });
 
         window.addEventListener('resize', function () {
-            if (!isMobile() && sidebar) {
+            if (!isMobile()) {
                 closeSidebar();
-                sidebar.style.display = 'flex';
                 document.body.style.overflow = '';
-            } else if (isMobile() && sidebar && !sidebar.classList.contains('mobile-open')) {
-                sidebar.style.display = 'none';
             }
         });
 

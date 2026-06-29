@@ -1,112 +1,59 @@
 <?php
 // =====================================================
-// PÁGINA INDIVIDUAL DA NOTÍCIA - CORRIGIDO E PADRONIZADO
+// PÁGINA INDIVIDUAL DA NOTÍCIA
 // Arquivo: pages/noticias/noticia.php
 // =====================================================
 
-// Inicia a sessão se não estiver ativa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Inclui os arquivos necessários
 require_once __DIR__ . '/../../includes/conexao.php';
 require_once __DIR__ . '/../../includes/funcoes.php';
-require_once __DIR__ . '/../../includes/verifica_login.php';
 require_once __DIR__ . '/../../includes/comentarios.php';
 require_once __DIR__ . '/../../includes/avatar_helper.php';
 
-// =====================================================
-// VERIFICA SE A CONEXÃO EXISTE
-// =====================================================
-if (!isset($conn)) {
-    set_mensagem('erro', 'Erro de conexão com o banco de dados.');
-    redirecionar('/');
-    exit;
-}
-
-// =====================================================
-// OBTÉM O ID DA NOTÍCIA
-// =====================================================
-$id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+$id = intval($_GET['id'] ?? 0);
 
 if ($id <= 0) {
-    set_mensagem('erro', 'ID da notícia inválido.');
-    redirecionar('/');
+    header("Location: ../../index.php");
     exit;
 }
 
-// =====================================================
-// BUSCA A NOTÍCIA NO BANCO
-// =====================================================
-try {
-    $stmt = $conn->prepare("
-        SELECT n.*, u.nome AS autor_nome, u.foto AS autor_foto, 
-               c.nome AS categoria_nome, c.icone AS categoria_icone
-        FROM noticias n
-        INNER JOIN usuarios u ON n.autor = u.id
-        LEFT JOIN categorias c ON n.categoria_id = c.id
-        WHERE n.id = ?
-    ");
-    $stmt->execute([$id]);
-    $noticia = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt = $pdo->prepare("
+    SELECT n.*, u.nome AS autor_nome, u.foto AS autor_foto, 
+           c.nome AS categoria_nome, c.icone AS categoria_icone
+    FROM noticias n
+    INNER JOIN usuarios u ON n.autor = u.id
+    LEFT JOIN categorias c ON n.categoria_id = c.id
+    WHERE n.id = ?
+");
+$stmt->execute([$id]);
+$noticia = $stmt->fetch();
 
-    if (!$noticia) {
-        set_mensagem('erro', 'Notícia não encontrada.');
-        redirecionar('/');
-        exit;
-    }
-} catch (PDOException $e) {
-    error_log("Erro ao buscar notícia: " . $e->getMessage());
-    set_mensagem('erro', 'Erro ao carregar a notícia. Tente novamente.');
-    redirecionar('/');
+if (!$noticia) {
+    set_mensagem('erro', 'Notícia não encontrada.');
+    header("Location: ../../index.php");
     exit;
 }
 
-// =====================================================
-// BUSCA CATEGORIAS PARA SIDEBAR
-// =====================================================
-$categorias = get_categorias($conn);
+$categorias = get_categorias($pdo);
+$comentarios = get_comentarios($pdo, $id);
+$total_comentarios = contar_comentarios($pdo, $id);
 
-// =====================================================
-// BUSCA COMENTÁRIOS
-// =====================================================
-try {
-    $comentarios = get_comentarios($conn, $id);
-    $total_comentarios = contar_comentarios($conn, $id);
-} catch (PDOException $e) {
-    error_log("Erro ao buscar comentários: " . $e->getMessage());
-    $comentarios = [];
-    $total_comentarios = 0;
-}
-
-// =====================================================
-// DADOS DO USUÁRIO LOGADO
-// =====================================================
 $usuario_logado = null;
 if (usuario_logado()) {
     $usuario_logado = [
-        'id' => get_usuario_id(),
         'nome' => get_usuario_nome(),
         'foto' => get_usuario_foto()
     ];
 }
 
-// =====================================================
-// PROCESSAR NOVO COMENTÁRIO
-// =====================================================
+// Processar novo comentário
 $erro_comentario = '';
 $sucesso_comentario = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['acao'] === 'comentar') {
-    // Verifica token CSRF
-    if (!isset($_POST['csrf_token']) || !verificar_token_csrf($_POST['csrf_token'])) {
-        $erro_comentario = 'Token de segurança inválido. Tente novamente.';
-    } elseif (!usuario_logado()) {
+    if (!usuario_logado()) {
         $erro_comentario = 'Você precisa estar logado para comentar.';
     } else {
         $conteudo = trim($_POST['conteudo'] ?? '');
-        
         if (empty($conteudo)) {
             $erro_comentario = 'O comentário não pode estar vazio.';
         } elseif (strlen($conteudo) < 3) {
@@ -114,175 +61,166 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['acao']) && $_POST['ac
         } elseif (strlen($conteudo) > 1000) {
             $erro_comentario = 'O comentário deve ter no máximo 1000 caracteres.';
         } else {
-            try {
-                $comentario_id = adicionar_comentario($conn, $id, get_usuario_id(), $conteudo);
-                if ($comentario_id) {
-                    $sucesso_comentario = 'Comentário adicionado com sucesso!';
-                    // Recarrega os comentários
-                    $comentarios = get_comentarios($conn, $id);
-                    $total_comentarios = contar_comentarios($conn, $id);
-                    
-                    // Log da ação
-                    error_log("Novo comentário: ID $comentario_id na notícia $id por " . get_usuario_nome());
-                } else {
-                    $erro_comentario = 'Erro ao adicionar comentário. Tente novamente.';
-                }
-            } catch (PDOException $e) {
-                error_log("Erro ao adicionar comentário: " . $e->getMessage());
+            if (adicionar_comentario($pdo, $id, get_usuario_id(), $conteudo)) {
+                $sucesso_comentario = 'Comentário adicionado com sucesso!';
+                $comentarios = get_comentarios($pdo, $id);
+                $total_comentarios = contar_comentarios($pdo, $id);
+            } else {
                 $erro_comentario = 'Erro ao adicionar comentário. Tente novamente.';
             }
         }
     }
 }
 
-// =====================================================
-// PROCESSAR EXCLUSÃO DE COMENTÁRIO
-// =====================================================
+// Processar exclusão de comentário - CORRIGIDO
 if (isset($_GET['excluir_comentario']) && usuario_logado()) {
     $comentario_id = intval($_GET['excluir_comentario']);
     
-    if ($comentario_id > 0) {
-        try {
-            // Verifica se o comentário existe e pertence ao usuário
-            $stmt = $conn->prepare("SELECT usuario_id FROM comentarios WHERE id = ?");
-            $stmt->execute([$comentario_id]);
-            $comentario = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($comentario && $comentario['usuario_id'] == get_usuario_id()) {
-                $deletado = excluir_comentario($conn, $comentario_id, get_usuario_id());
-                if ($deletado) {
-                    set_mensagem('sucesso', 'Comentário excluído com sucesso.');
-                    // Recarrega os comentários
-                    $comentarios = get_comentarios($conn, $id);
-                    $total_comentarios = contar_comentarios($conn, $id);
-                } else {
-                    set_mensagem('erro', 'Erro ao excluir comentário.');
-                }
-            } else {
-                set_mensagem('erro', 'Você não tem permissão para excluir este comentário.');
-            }
-        } catch (PDOException $e) {
-            error_log("Erro ao excluir comentário: " . $e->getMessage());
-            set_mensagem('erro', 'Erro ao excluir comentário.');
-        }
-        
-        // Redireciona para a mesma página
-        redirecionar('pages/noticias/noticia.php?id=' . $id);
-        exit;
+    // Verifica se o comentário existe e pertence ao usuário
+    $stmt = $pdo->prepare("SELECT id FROM comentarios WHERE id = ? AND usuario_id = ?");
+    $stmt->execute([$comentario_id, get_usuario_id()]);
+    $comentario_existe = $stmt->fetch();
+    
+    if ($comentario_existe) {
+        $stmt = $pdo->prepare("DELETE FROM comentarios WHERE id = ? AND usuario_id = ?");
+        $stmt->execute([$comentario_id, get_usuario_id()]);
+        set_mensagem('sucesso', 'Comentário excluído com sucesso.');
+    } else {
+        set_mensagem('erro', 'Você não tem permissão para excluir este comentário.');
     }
+    
+    // Redireciona para a mesma página
+    header("Location: noticia.php?id=" . $id);
+    exit;
 }
-
-// =====================================================
-// GERA TOKEN CSRF
-// =====================================================
-$csrf_token = gerar_token_csrf();
-
-// =====================================================
-// VERIFICA SE O USUÁRIO É O AUTOR DA NOTÍCIA
-// =====================================================
-$pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= escape($noticia['titulo']) ?> - GGNews</title>
-    <meta name="description" content="<?= escape(resumo_texto($noticia['noticia'], 150)) ?>">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/style.css">
+    <link rel="stylesheet" href="../../css/style.css">
 
     <style>
-        :root {
-            --bg-body: #0c0c10;
-            --bg-card: #1a1a2e;
-            --bg-surface: #121218;
-            --bg-elevated: #1a1a22;
-            --bg-header: #121218;
-            --border: #252535;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --accent-text: #c4b5fd;
-            --text-primary: #eeeaf8;
-            --text-secondary: #b8b5d0;
-            --text-muted: #5e5c76;
-            --text-danger: #ef4444;
-            --text-success: #10b981;
-            --shadow: 0 4px 20px rgba(0,0,0,0.4);
+        .comentario-item-header {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
         }
 
-        [data-theme="light"] {
-            --bg-body: #f5f3f0;
-            --bg-card: #ffffff;
-            --bg-surface: #f8f6f4;
-            --bg-elevated: #f0edf0;
-            --bg-header: #ffffff;
-            --border: #e5e0db;
-            --text-primary: #1a1a1a;
-            --text-secondary: #4a4a5a;
-            --text-muted: #8888a0;
-            --shadow: 0 4px 20px rgba(0,0,0,0.08);
+        .comentario-item-header .avatar-img {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--border);
+            flex-shrink: 0;
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        .comentario-item-header .avatar-fallback {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-light);
+            color: var(--accent-text);
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: 2px solid var(--border);
+            flex-shrink: 0;
         }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-            background: var(--bg-body);
-            color: var(--text-primary);
-            min-height: 100vh;
-            transition: background 0.3s ease, color 0.3s ease;
+        .comentario-form-header .avatar-img {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid var(--border);
         }
 
-        /* Sidebar */
+        .comentario-form-header .avatar-fallback {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent-light);
+            color: var(--accent-text);
+            font-weight: 700;
+            font-size: 0.9rem;
+            border: 2px solid var(--border);
+        }
+
+        .badge-cat {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: var(--accent-light);
+            color: var(--accent-text);
+            padding: 0.2rem 0.75rem;
+            border-radius: 99px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--accent);
+            color: #fff;
+            padding: 0.5rem 1.1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            border: none;
+            cursor: pointer;
+            text-decoration: none;
+            transition: background 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+        }
+
         .sidebar {
-            background: var(--bg-card);
+            background: var(--bg-sidebar);
             border-right: 1px solid var(--border);
-            transition: background 0.3s ease, transform 0.3s ease;
-            transform: translateX(-100%);
-        }
-
-        .sidebar.mobile-open {
-            transform: translateX(0);
-        }
-
-        @media (min-width: 768px) {
-            .sidebar {
-                transform: translateX(0);
-            }
-        }
-
-        .sidebar-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 40;
-        }
-
-        .sidebar-overlay.active {
-            display: block;
+            box-shadow: var(--shadow-lg);
+            transition: background var(--transition-theme), border-color var(--transition-theme), transform 0.3s ease;
         }
 
         .sidebar-logo {
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 0.75rem;
             text-decoration: none;
+            padding: 0.25rem 0.25rem 0.5rem;
         }
 
         .logo-icon {
-            font-size: 1.5rem;
+            width: 38px;
+            height: 38px;
+            background: var(--accent-light);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
         }
 
         .logo-text {
-            font-size: 1.25rem;
-            font-weight: 700;
+            font-family: 'Syne', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 800;
             color: var(--text-primary);
+            line-height: 1.1;
         }
 
         .logo-text span {
@@ -290,55 +228,95 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
         }
 
         .logo-tag {
-            font-size: 0.65rem;
+            font-size: 0.68rem;
+            font-weight: 500;
             color: var(--text-muted);
+            letter-spacing: 0.02em;
         }
 
         .sidebar-section-label {
-            color: var(--text-muted);
-            font-size: 0.7rem;
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
             text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.5rem;
+            color: var(--text-muted);
+            padding: 0.75rem 0.75rem 0.35rem;
+        }
+
+        .sidebar-nav, .sidebar-categories {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
         }
 
         .nav-link {
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 500;
             color: var(--text-secondary);
             text-decoration: none;
-            transition: color 0.2s ease, background 0.2s ease;
+            position: relative;
+            transition: background 0.18s ease, color 0.18s ease;
         }
 
-        .nav-link:hover,
-        .nav-link.active {
+        .nav-link:hover {
+            background: var(--bg-elevated);
             color: var(--text-primary);
-            background: rgba(124, 58, 237, 0.1);
         }
 
-        .nav-link-danger {
-            color: var(--text-danger);
+        .nav-link.active {
+            background: var(--accent-light);
+            color: var(--accent);
+            font-weight: 600;
         }
 
-        .nav-link-danger:hover {
-            background: rgba(239, 68, 68, 0.1);
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 18%;
+            height: 64%;
+            width: 3px;
+            background: var(--accent);
+            border-radius: 0 3px 3px 0;
         }
 
         .nav-icon {
-            font-size: 1.1rem;
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: var(--bg-elevated);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
         }
 
         .cat-icon {
-            font-size: 1rem;
+            width: 22px;
+            text-align: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .nav-link-danger {
+            color: #ef4444 !important;
+        }
+
+        .nav-link-danger:hover {
+            background: #fef2f2 !important;
+            color: #dc2626 !important;
         }
 
         .theme-toggle-wrap {
-            margin-top: auto;
-            padding-top: 1rem;
+            padding-top: 0.75rem;
             border-top: 1px solid var(--border);
+            margin-top: auto;
         }
 
         .theme-toggle-btn {
@@ -346,210 +324,159 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
             align-items: center;
             gap: 0.75rem;
             width: 100%;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            background: none;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            background: transparent;
             border: none;
-            color: var(--text-secondary);
             cursor: pointer;
-            transition: color 0.2s ease, background 0.2s ease;
+            transition: background 0.18s ease;
+            text-align: left;
         }
 
         .theme-toggle-btn:hover {
-            color: var(--text-primary);
-            background: rgba(124, 58, 237, 0.1);
+            background: var(--bg-elevated);
         }
 
         .toggle-track {
-            width: 2.5rem;
-            height: 1.25rem;
-            background: var(--border);
-            border-radius: 999px;
             position: relative;
+            width: 38px;
+            height: 22px;
+            background: var(--border);
+            border-radius: 99px;
             flex-shrink: 0;
             transition: background 0.25s ease;
         }
 
-        [data-theme="dark"] .toggle-track {
+        .toggle-track.is-dark {
             background: var(--accent);
         }
 
         .toggle-thumb {
-            width: 1rem;
-            height: 1rem;
-            background: #fff;
-            border-radius: 999px;
             position: absolute;
-            top: 0.125rem;
-            left: 0.125rem;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
             transition: transform 0.25s ease;
         }
 
-        [data-theme="light"] .toggle-thumb {
-            transform: translateX(1.25rem);
+        .toggle-track.is-dark .toggle-thumb {
+            transform: translateX(16px);
+        }
+
+        .toggle-icons {
+            font-size: 1rem;
+            line-height: 1;
         }
 
         .toggle-label {
-            font-size: 0.8rem;
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: var(--text-secondary);
         }
 
         .sidebar-footer-tag {
-            font-size: 0.65rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-        }
-
-        /* Site Header */
-        .site-header {
-            background: var(--bg-header);
-            border-bottom: 1px solid var(--border);
-            padding: 0.75rem 1rem;
-            position: sticky;
-            top: 0;
-            z-index: 30;
-            transition: background 0.3s ease, border-color 0.3s ease;
-        }
-
-        .btn-primary {
-            background: var(--accent);
-            color: #fff;
-            padding: 0.4rem 1rem;
-            border-radius: 0.5rem;
-            font-size: 0.875rem;
-            font-weight: 600;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
-            transition: background 0.2s ease, transform 0.15s ease;
-            display: inline-block;
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-light);
-            transform: translateY(-1px);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .badge-cat {
-            display: inline-block;
             font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding: 0.25rem 0.75rem;
-            border-radius: 999px;
-            background: var(--accent);
-            color: #fff;
+            color: var(--text-muted);
+            text-align: center;
+            margin: 0.5rem 0 0;
         }
 
-        .avatar {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--border);
+        .site-header {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border);
+            transition: background var(--transition-theme), border-color var(--transition-theme);
         }
 
-        .avatar-fallback {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--accent);
-            color: #fff;
-            font-weight: 700;
-            font-size: 0.8rem;
-            border: 2px solid var(--border);
-            flex-shrink: 0;
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.4);
+            z-index: 49;
+            backdrop-filter: blur(2px);
         }
 
-        .comentario-avatar {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            object-fit: cover;
-            border: 2px solid var(--border);
-            flex-shrink: 0;
+        .sidebar-overlay.active {
+            display: block;
         }
 
-        .comentario-avatar-fallback {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--accent);
-            color: #fff;
-            font-weight: 700;
-            font-size: 0.9rem;
-            border: 2px solid var(--border);
-            flex-shrink: 0;
+        .comentario-item-excluir {
+            color: #ef4444;
+            text-decoration: none;
+            font-size: 0.75rem;
+            transition: color 0.2s ease;
         }
 
-        .msg-erro {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid var(--text-danger);
-            color: var(--text-danger);
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            font-size: 0.9rem;
+        .comentario-item-excluir:hover {
+            color: #dc2626;
+            text-decoration: underline;
         }
 
-        .msg-sucesso {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid var(--text-success);
-            color: var(--text-success);
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            font-size: 0.9rem;
-        }
-
-        @media (max-width: 768px) {
+        @media (max-width: 767px) {
             .sidebar {
                 display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 260px;
+                height: 100%;
+                z-index: 50;
+                flex-direction: column;
             }
-
             .sidebar.mobile-open {
-                display: flex;
-            }
-        }
-
-        @media (min-width: 768px) {
-            .sidebar {
                 display: flex !important;
             }
         }
+
+        .hidden { display: none; }
+        @media (min-width: 768px) {
+            .md\\:flex { display: flex !important; }
+            .md\\:ml-64 { margin-left: 260px; }
+            .md\\:hidden { display: none !important; }
+        }
+
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .flex-1 { flex: 1; }
+        .min-w-0 { min-width: 0; }
+        .sticky { position: sticky; }
+        .top-0 { top: 0; }
+        .z-30 { z-index: 30; }
+        .z-50 { z-index: 50; }
+        .fixed { position: fixed; }
+        .h-full { height: 100%; }
+        .w-64 { width: 260px; }
+        .overflow-y-auto { overflow-y: auto; }
+        .p-5 { padding: 1.25rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+        .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
+        .mb-7 { margin-bottom: 1.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .mt-16 { margin-top: 4rem; }
+        .max-w-4xl { max-width: 900px; }
+        .mx-auto { margin-left: auto; margin-right: auto; }
     </style>
 
     <script>
         (function() {
-            var t = localStorage.getItem('gg-theme') || 'dark';
+            var t = localStorage.getItem('gg-theme') || 'light';
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
 </head>
-<body>
+<body class="min-h-screen flex">
 
-    <!-- Overlay mobile -->
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-    <!-- ══════════════════════════════════════════════════════
-         SIDEBAR
-    ══════════════════════════════════════════════════════ -->
     <aside id="sidebar" class="sidebar w-64 fixed h-full z-50 flex-col p-5 overflow-y-auto hidden md:flex">
 
         <div class="mb-7">
-            <a href="<?= BASE_URL ?>" class="sidebar-logo">
+            <a href="../../index.php" class="sidebar-logo">
                 <div class="logo-icon">🎮</div>
                 <div>
                     <div class="logo-text"><span>GG</span>News</div>
@@ -560,30 +487,30 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
 
         <div class="sidebar-section-label">Menu</div>
         <nav class="sidebar-nav mb-4">
-            <a href="<?= BASE_URL ?>" class="nav-link">
+            <a href="../../index.php" class="nav-link">
                 <span class="nav-icon">🏠</span>
                 Início
             </a>
-            <a href="<?= BASE_URL ?>pages/noticias/dashboard.php" class="nav-link">
+            <a href="../../pages/noticias/dashboard.php" class="nav-link">
                 <span class="nav-icon">📋</span>
                 Painel
             </a>
 
             <?php if (usuario_logado()): ?>
-                <a href="<?= BASE_URL ?>pages/usuario/editar_usuario.php" class="nav-link">
+                <a href="../../pages/usuario/editar_usuario.php" class="nav-link">
                     <span class="nav-icon">👤</span>
                     Minha Conta
                 </a>
-                <a href="<?= BASE_URL ?>pages/auth/logout.php" class="nav-link nav-link-danger">
+                <a href="../../pages/auth/logout.php" class="nav-link nav-link-danger">
                     <span class="nav-icon">🚪</span>
                     Sair
                 </a>
             <?php else: ?>
-                <a href="<?= BASE_URL ?>pages/auth/login.php" class="nav-link">
+                <a href="../../pages/auth/login.php" class="nav-link">
                     <span class="nav-icon">🔐</span>
                     Login
                 </a>
-                <a href="<?= BASE_URL ?>pages/auth/cadastro.php" class="nav-link">
+                <a href="../../pages/auth/cadastro.php" class="nav-link">
                     <span class="nav-icon">📝</span>
                     Cadastrar
                 </a>
@@ -594,9 +521,9 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
         <div class="sidebar-section-label">Categorias</div>
         <nav class="sidebar-categories mb-4">
             <?php foreach ($categorias as $cat): ?>
-                <a href="<?= BASE_URL ?>pages/categorias/categoria.php?slug=<?= $cat['slug'] ?? '' ?>"
-                   class="nav-link <?= (isset($noticia['categoria_nome']) && $noticia['categoria_nome'] === $cat['nome']) ? 'active' : '' ?>">
-                    <span class="cat-icon"><?= $cat['icone'] ?? '📰' ?></span>
+                <a href="../../pages/categorias/categoria.php?slug=<?= $cat['slug'] ?>"
+                   class="nav-link <?= ($noticia['categoria_nome'] ?? '') === $cat['nome'] ? 'active' : '' ?>">
+                    <span class="cat-icon"><?= $cat['icone'] ?></span>
                     <?= escape($cat['nome']) ?>
                 </a>
             <?php endforeach; ?>
@@ -605,7 +532,7 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
 
         <div class="theme-toggle-wrap">
             <button id="theme-toggle" class="theme-toggle-btn" aria-label="Alternar tema">
-                <div class="toggle-track">
+                <div class="toggle-track" id="toggle-track">
                     <div class="toggle-thumb"></div>
                 </div>
                 <span class="toggle-icons" id="theme-icon">🌙</span>
@@ -616,12 +543,8 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
 
     </aside>
 
-    <!-- ══════════════════════════════════════════════════════
-         CONTEÚDO PRINCIPAL
-    ══════════════════════════════════════════════════════ -->
     <div class="flex-1 md:ml-64 min-w-0">
 
-        <!-- HEADER -->
         <header class="site-header sticky top-0 z-30 px-4 py-3">
             <div class="max-w-4xl mx-auto flex items-center justify-between">
 
@@ -634,7 +557,7 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                             aria-controls="sidebar">
                         ☰
                     </button>
-                    <a href="<?= BASE_URL ?>" class="flex items-center gap-2 md:hidden text-lg font-bold"
+                    <a href="../../index.php" class="flex items-center gap-2 md:hidden text-lg font-bold"
                        style="color:var(--text-primary); text-decoration:none;">
                         🎮 <span style="color:var(--accent)">GG</span>News
                     </a>
@@ -646,10 +569,12 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                             <?php 
                             $foto_usuario = get_usuario_foto();
                             if ($foto_usuario): ?>
-                                <img src="<?= BASE_URL ?>uploads/<?= escape($foto_usuario) ?>" 
-                                     class="avatar">
+                                <img src="../../uploads/<?= escape($foto_usuario) ?>" 
+                                     class="avatar" 
+                                     style="width:32px; height:32px; border-radius:50%; object-fit:cover; border:2px solid var(--border);">
                             <?php else: ?>
-                                <div class="avatar-fallback">
+                                <div class="avatar-fallback" 
+                                     style="width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.8rem; border:2px solid var(--border);">
                                     <?= get_avatar_initials(get_usuario_nome()) ?>
                                 </div>
                             <?php endif; ?>
@@ -657,15 +582,15 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                                 Olá, <?= escape(get_usuario_nome()) ?>
                             </span>
                         </div>
-                        <a href="<?= BASE_URL ?>pages/noticias/dashboard.php" class="btn-primary text-sm px-4 py-2">
+                        <a href="../../pages/noticias/dashboard.php" class="btn-primary text-sm px-4 py-2">
                             Painel
                         </a>
-                        <a href="<?= BASE_URL ?>pages/auth/logout.php"
+                        <a href="../../pages/auth/logout.php"
                            style="color:var(--text-muted); font-size:.875rem; text-decoration:none;">Sair</a>
                     <?php else: ?>
-                        <a href="<?= BASE_URL ?>pages/auth/login.php"
+                        <a href="../../pages/auth/login.php"
                            style="color:var(--text-secondary); font-size:.875rem; text-decoration:none;">Login</a>
-                        <a href="<?= BASE_URL ?>pages/auth/cadastro.php" class="btn-primary text-sm px-4 py-2">
+                        <a href="../../pages/auth/cadastro.php" class="btn-primary text-sm px-4 py-2">
                             Cadastrar
                         </a>
                     <?php endif; ?>
@@ -674,18 +599,15 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
             </div>
         </header>
 
-        <!-- MAIN -->
         <main class="max-w-4xl mx-auto px-4 py-8">
 
-            <!-- Voltar -->
-            <a href="<?= BASE_URL ?>"
+            <a href="../../index.php"
                class="inline-flex items-center gap-1 text-sm mb-6 transition"
                style="color:var(--accent); text-decoration:none;">
                 ← Voltar para as notícias
             </a>
 
-            <!-- Imagem -->
-            <?php if (!empty($noticia['imagem'])): ?>
+            <?php if ($noticia['imagem']): ?>
                 <div class="rounded-2xl overflow-hidden mb-8 h-[400px]">
                     <img src="<?= escape($noticia['imagem']) ?>"
                          alt="<?= escape($noticia['titulo']) ?>"
@@ -693,13 +615,11 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                 </div>
             <?php endif; ?>
 
-            <!-- Título -->
             <h1 class="text-3xl md:text-4xl font-bold leading-tight"
                 style="color:var(--text-primary)">
                 <?= escape($noticia['titulo']) ?>
             </h1>
 
-            <!-- Meta -->
             <div class="flex flex-wrap items-center gap-4 mt-4 text-sm pb-6 mb-8"
                  style="border-bottom: 1px solid var(--border);">
                 <span class="badge-cat">
@@ -711,36 +631,39 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                 </span>
                 <span style="color:var(--text-muted)">•</span>
                 <span style="color:var(--text-muted)"><?= formatar_data($noticia['data']) ?></span>
-                <span style="color:var(--text-muted)">•</span>
-                <span style="color:var(--text-muted)">💬 <?= $total_comentarios ?> comentário<?= $total_comentarios != 1 ? 's' : '' ?></span>
             </div>
 
-            <!-- Conteúdo -->
             <article class="text-lg leading-relaxed whitespace-pre-line"
                      style="color:var(--text-secondary)">
                 <?= escape($noticia['noticia']) ?>
             </article>
 
-            <!-- ══════════════════════════════════════════════════════
-                 SEÇÃO DE COMENTÁRIOS
-            ══════════════════════════════════════════════════════ -->
+            <!-- SEÇÃO DE COMENTÁRIOS -->
             <section class="mt-12 pt-8" style="border-top: 1px solid var(--border);">
 
                 <h3 class="text-2xl font-bold mb-6" style="color:var(--text-primary)">
                     💬 Comentários (<?= $total_comentarios ?>)
                 </h3>
 
-                <!-- Mensagens -->
                 <?php if ($erro_comentario): ?>
-                    <div class="msg-erro"><?= escape($erro_comentario) ?></div>
+                    <div class="px-4 py-3 rounded-lg mb-4 border text-sm"
+                         style="background:rgba(239,68,68,0.1); border-color:#ef4444; color:#dc2626;">
+                        <?= escape($erro_comentario) ?>
+                    </div>
                 <?php endif; ?>
 
                 <?php if ($sucesso_comentario): ?>
-                    <div class="msg-sucesso"><?= escape($sucesso_comentario) ?></div>
+                    <div class="px-4 py-3 rounded-lg mb-4 border text-sm"
+                         style="background:rgba(16,185,129,0.1); border-color:#10b981; color:#059669;">
+                        <?= escape($sucesso_comentario) ?>
+                    </div>
                 <?php endif; ?>
 
                 <?php $msg = get_mensagem(); if ($msg): ?>
-                    <div class="<?= $msg['tipo'] === 'sucesso' ? 'msg-sucesso' : 'msg-erro' ?>">
+                    <div class="px-4 py-3 rounded-lg mb-4 border text-sm"
+                         style="<?= $msg['tipo'] === 'sucesso'
+                            ? 'background:rgba(16,185,129,0.1); border-color:#10b981; color:#059669;'
+                            : 'background:rgba(239,68,68,0.1); border-color:#ef4444; color:#dc2626;' ?>">
                         <?= escape($msg['texto']) ?>
                     </div>
                 <?php endif; ?>
@@ -752,10 +675,12 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                             <?php 
                             $foto_usuario = get_usuario_foto();
                             if ($foto_usuario): ?>
-                                <img src="<?= BASE_URL ?>uploads/<?= escape($foto_usuario) ?>" 
-                                     class="comentario-avatar">
+                                <img src="../../uploads/<?= escape($foto_usuario) ?>" 
+                                     class="comentario-form-header avatar-img" 
+                                     style="width:40px; height:40px; border-radius:50%; object-fit:cover; border:2px solid var(--border);">
                             <?php else: ?>
-                                <div class="comentario-avatar-fallback">
+                                <div class="comentario-form-header avatar-fallback" 
+                                     style="width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.9rem; border:2px solid var(--border);">
                                     <?= get_avatar_initials(get_usuario_nome()) ?>
                                 </div>
                             <?php endif; ?>
@@ -765,26 +690,26 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                         </div>
                         <form method="POST">
                             <input type="hidden" name="acao" value="comentar">
-                            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                             <textarea name="conteudo" rows="3"
                                       placeholder="Escreva seu comentário..."
                                       class="w-full px-4 py-3 rounded-lg resize-y"
                                       style="background:var(--bg-surface); border:1px solid var(--border);
                                              color:var(--text-primary); font-family:inherit; font-size:0.9rem;"
-                                      required
-                                      maxlength="1000"></textarea>
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.5rem;">
-                                <span style="color:var(--text-muted);font-size:0.75rem;">Máximo 1000 caracteres</span>
-                                <button type="submit" class="btn-primary px-6 py-2 text-sm">
-                                    Enviar Comentário
-                                </button>
+                                      maxlength="1000"
+                                      required></textarea>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.25rem;">
+                                <span style="font-size:0.7rem; color:var(--text-muted);">Máximo 1000 caracteres</span>
                             </div>
+                            <button type="submit"
+                                    class="btn-primary mt-3 px-6 py-2 text-sm">
+                                Enviar Comentário
+                            </button>
                         </form>
                     </div>
                 <?php else: ?>
                     <div class="text-center p-8 rounded-xl mb-8" style="background:var(--bg-elevated); border:1px solid var(--border);">
                         <p style="color:var(--text-secondary);">
-                            🔒 Faça <a href="<?= BASE_URL ?>pages/auth/login.php" style="color:var(--accent); font-weight:600; text-decoration:none;">login</a>
+                            🔒 Faça <a href="../../pages/auth/login.php" style="color:var(--accent); font-weight:600; text-decoration:none;">login</a>
                             para comentar e interagir com a comunidade.
                         </p>
                     </div>
@@ -799,12 +724,15 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                     <div class="space-y-4">
                         <?php foreach ($comentarios as $comentario): ?>
                             <div class="p-4 rounded-xl" style="background:var(--bg-elevated); border:1px solid var(--border);">
-                                <div class="flex items-start gap-3">
-                                    <?php if (!empty($comentario['foto'])): ?>
-                                        <img src="<?= BASE_URL ?>uploads/<?= escape($comentario['foto']) ?>" 
-                                             class="comentario-avatar">
+                                <div class="comentario-item-header">
+                                    <?php 
+                                    if (!empty($comentario['foto'])): ?>
+                                        <img src="../../uploads/<?= escape($comentario['foto']) ?>" 
+                                             class="avatar-img" 
+                                             style="width:36px; height:36px; border-radius:50%; object-fit:cover; border:2px solid var(--border); flex-shrink:0;">
                                     <?php else: ?>
-                                        <div class="comentario-avatar-fallback">
+                                        <div class="avatar-fallback" 
+                                             style="width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:var(--accent-light); color:var(--accent-text); font-weight:700; font-size:0.8rem; border:2px solid var(--border); flex-shrink:0;">
                                             <?= get_avatar_initials($comentario['nome']) ?>
                                         </div>
                                     <?php endif; ?>
@@ -821,13 +749,11 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
                                             <?= nl2br(escape($comentario['conteudo'])) ?>
                                         </p>
                                         <?php if (usuario_logado() && get_usuario_id() == $comentario['usuario_id']): ?>
-                                            <a href="?id=<?= $id ?>&excluir_comentario=<?= $comentario['id'] ?>"
+                                            <!-- CORRIGIDO: Link absoluto para excluir comentário -->
+                                            <a href="noticia.php?id=<?= $id ?>&excluir_comentario=<?= $comentario['id'] ?>"
                                                onclick="return confirm('Tem certeza que deseja excluir este comentário?')"
-                                               class="text-xs mt-1 inline-block transition"
-                                               style="color:var(--text-danger); text-decoration:none;"
-                                               onmouseover="this.style.color='#f87171'"
-                                               onmouseout="this.style.color='var(--text-danger)'">
-                                                🗑️ Excluir
+                                               class="comentario-item-excluir">
+                                                Excluir
                                             </a>
                                         <?php endif; ?>
                                     </div>
@@ -839,25 +765,23 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
 
             </section>
 
-            <!-- Rodapé da página -->
             <div class="mt-12 pt-6 flex items-center justify-between flex-wrap gap-4"
                  style="border-top: 1px solid var(--border);">
-                <a href="<?= BASE_URL ?>"
+                <a href="../../index.php"
                    class="inline-flex items-center gap-2 text-sm font-medium transition"
                    style="color:var(--accent); text-decoration:none;">
                     ← Todas as notícias
                 </a>
-                <?php if ($pode_editar): ?>
-                    <a href="<?= BASE_URL ?>pages/noticias/editar_noticia.php?id=<?= $noticia['id'] ?>"
+                <?php if (usuario_logado()): ?>
+                    <a href="editar_noticia.php?id=<?= $noticia['id'] ?>"
                        class="btn-primary text-sm px-4 py-2">
-                        ✏️ Editar notícia
+                        Editar notícia
                     </a>
                 <?php endif; ?>
             </div>
 
         </main>
 
-        <!-- Footer -->
         <footer class="mt-16 border-t" style="background:var(--bg-surface); border-color:var(--border)">
             <div class="max-w-7xl mx-auto px-4 py-8 text-center">
                 <p class="text-sm" style="color:var(--text-muted)">
@@ -869,15 +793,13 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
 
     </div>
 
-    <!-- ══════════════════════════════════════════════════════
-         SCRIPTS
-    ══════════════════════════════════════════════════════ -->
     <script>
     (function () {
-        var html = document.documentElement;
-        var btn = document.getElementById('theme-toggle');
-        var label = document.getElementById('theme-label');
-        var icon = document.getElementById('theme-icon');
+        var html    = document.documentElement;
+        var btn     = document.getElementById('theme-toggle');
+        var track   = document.getElementById('toggle-track');
+        var label   = document.getElementById('theme-label');
+        var icon    = document.getElementById('theme-icon');
         var sidebar = document.getElementById('sidebar');
         var overlay = document.getElementById('sidebar-overlay');
         var menuBtn = document.getElementById('menu-toggle');
@@ -886,84 +808,53 @@ $pode_editar = usuario_logado() && $noticia['autor'] == get_usuario_id();
             html.setAttribute('data-theme', theme);
             localStorage.setItem('gg-theme', theme);
             if (theme === 'dark') {
+                track  && track.classList.add('is-dark');
                 if (label) label.textContent = 'Modo Claro';
-                if (icon) icon.textContent = '☀️';
+                if (icon)  icon.textContent  = '☀️';
             } else {
+                track  && track.classList.remove('is-dark');
                 if (label) label.textContent = 'Modo Escuro';
-                if (icon) icon.textContent = '🌙';
+                if (icon)  icon.textContent  = '🌙';
             }
         }
 
-        applyTheme(html.getAttribute('data-theme') || 'dark');
+        applyTheme(html.getAttribute('data-theme') || 'light');
 
-        if (btn) {
-            btn.addEventListener('click', function () {
-                applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
-            });
-        }
+        btn && btn.addEventListener('click', function () {
+            applyTheme(html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+        });
 
-        // Sidebar mobile
         function openSidebar() {
-            if (sidebar) {
-                sidebar.classList.add('mobile-open');
-                sidebar.style.display = 'flex';
-            }
-            if (overlay) overlay.classList.add('active');
-            if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+            sidebar.classList.add('mobile-open');
+            overlay.classList.add('active');
+            menuBtn && menuBtn.setAttribute('aria-expanded', 'true');
             document.body.style.overflow = 'hidden';
         }
 
         function closeSidebar() {
-            if (sidebar) {
-                sidebar.classList.remove('mobile-open');
-                if (window.innerWidth < 768) {
-                    sidebar.style.display = 'none';
-                }
-            }
-            if (overlay) overlay.classList.remove('active');
-            if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+            sidebar.classList.remove('mobile-open');
+            overlay.classList.remove('active');
+            menuBtn && menuBtn.setAttribute('aria-expanded', 'false');
             document.body.style.overflow = '';
         }
 
-        function isMobile() {
-            return window.innerWidth < 768;
-        }
+        menuBtn && menuBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            sidebar.classList.contains('mobile-open') ? closeSidebar() : openSidebar();
+        });
 
-        if (isMobile() && sidebar) {
-            sidebar.style.display = 'none';
-        }
-
-        if (menuBtn) {
-            menuBtn.addEventListener('click', function (e) {
-                e.stopPropagation();
-                if (sidebar && sidebar.classList.contains('mobile-open')) {
-                    closeSidebar();
-                } else {
-                    openSidebar();
-                }
-            });
-        }
-
-        if (overlay) {
-            overlay.addEventListener('click', closeSidebar);
-        }
+        overlay && overlay.addEventListener('click', closeSidebar);
 
         document.addEventListener('keydown', function (e) {
-            if (e.key === 'Escape' && isMobile()) {
-                closeSidebar();
-            }
+            if (e.key === 'Escape' && window.innerWidth < 768) closeSidebar();
         });
 
         window.addEventListener('resize', function () {
-            if (!isMobile() && sidebar) {
+            if (window.innerWidth >= 768) {
                 closeSidebar();
-                sidebar.style.display = 'flex';
                 document.body.style.overflow = '';
-            } else if (isMobile() && sidebar && !sidebar.classList.contains('mobile-open')) {
-                sidebar.style.display = 'none';
             }
         });
-
     })();
     </script>
 

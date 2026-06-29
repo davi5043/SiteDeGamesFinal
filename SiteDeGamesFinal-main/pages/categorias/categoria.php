@@ -11,7 +11,8 @@ require_once __DIR__ . '/../../includes/avatar_helper.php';
 $slug = $_GET['slug'] ?? '';
 
 if (empty($slug)) {
-    redirecionar('index.php');
+    header("Location: ../../index.php");
+    exit;
 }
 
 $stmt = $pdo->prepare("SELECT * FROM categorias WHERE slug = ?");
@@ -20,7 +21,8 @@ $categoria = $stmt->fetch();
 
 if (!$categoria) {
     set_mensagem('erro', 'Categoria não encontrada.');
-    redirecionar('index.php');
+    header("Location: ../../index.php");
+    exit;
 }
 
 $stmt = $pdo->prepare("
@@ -55,20 +57,492 @@ if (usuario_logado()) {
     <link rel="stylesheet" href="../../css/style.css">
 
     <style>
-        /* =====================================================
-           ESTILOS PARA PÁGINAS DE CATEGORIA (INLINE)
-           ===================================================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-        /* ── HEADER DA CATEGORIA ─────────────────────────────── */
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f8f4f0;
+            color: #1a1a1a;
+            min-height: 100vh;
+            display: flex;
+        }
+
+        [data-theme="dark"] body {
+            background: #0c0c10;
+            color: #eeeaf8;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: #ffffff;
+            border-right: 1px solid #e8e2da;
+            padding: 1.25rem;
+            position: fixed;
+            top: 0;
+            left: 0;
+            height: 100%;
+            overflow-y: auto;
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+        }
+
+        [data-theme="dark"] .sidebar {
+            background: #101015;
+            border-color: #252535;
+        }
+
+        @media (min-width: 768px) {
+            .sidebar {
+                display: flex !important;
+            }
+        }
+
+        .sidebar.mobile-open {
+            display: flex !important;
+        }
+
+        .sidebar-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 49;
+            backdrop-filter: blur(2px);
+        }
+
+        .sidebar-overlay.active {
+            display: block;
+        }
+
+        .sidebar-logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            text-decoration: none;
+            margin-bottom: 1.75rem;
+        }
+
+        .logo-icon {
+            width: 38px;
+            height: 38px;
+            background: #ede9fe;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            flex-shrink: 0;
+        }
+
+        [data-theme="dark"] .logo-icon {
+            background: #1c1831;
+        }
+
+        .logo-text {
+            font-family: 'Syne', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: #1a1a1a;
+            line-height: 1.1;
+        }
+
+        [data-theme="dark"] .logo-text {
+            color: #eeeaf8;
+        }
+
+        .logo-text span {
+            color: #7c3aed;
+        }
+
+        .logo-tag {
+            font-size: 0.68rem;
+            font-weight: 500;
+            color: #9ca3af;
+            letter-spacing: 0.02em;
+        }
+
+        [data-theme="dark"] .logo-tag {
+            color: #5e5c76;
+        }
+
+        .sidebar-section-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            padding: 0.75rem 0.75rem 0.35rem;
+        }
+
+        [data-theme="dark"] .sidebar-section-label {
+            color: #5e5c76;
+        }
+
+        .sidebar-nav,
+        .sidebar-categories {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: #5f6378;
+            text-decoration: none;
+            position: relative;
+            transition: all 0.18s ease;
+        }
+
+        [data-theme="dark"] .nav-link {
+            color: #918fac;
+        }
+
+        .nav-link:hover {
+            background: #f8f4f0;
+            color: #1a1a1a;
+        }
+
+        [data-theme="dark"] .nav-link:hover {
+            background: #1a1a22;
+            color: #eeeaf8;
+        }
+
+        .nav-link.active {
+            background: #ede9fe;
+            color: #7c3aed;
+            font-weight: 600;
+        }
+
+        [data-theme="dark"] .nav-link.active {
+            background: #1c1831;
+            color: #a78bfa;
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 18%;
+            height: 64%;
+            width: 3px;
+            background: #7c3aed;
+            border-radius: 0 3px 3px 0;
+        }
+
+        .nav-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 7px;
+            background: #f8f4f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        [data-theme="dark"] .nav-icon {
+            background: #1a1a22;
+        }
+
+        .cat-icon {
+            width: 22px;
+            text-align: center;
+            font-size: 0.85rem;
+            flex-shrink: 0;
+        }
+
+        .nav-link-danger {
+            color: #ef4444 !important;
+        }
+
+        .nav-link-danger:hover {
+            background: #fef2f2 !important;
+            color: #dc2626 !important;
+        }
+
+        [data-theme="dark"] .nav-link-danger:hover {
+            background: #2d0a0a !important;
+        }
+
+        .theme-toggle-wrap {
+            padding-top: 0.75rem;
+            border-top: 1px solid #e8e2da;
+            margin-top: auto;
+        }
+
+        [data-theme="dark"] .theme-toggle-wrap {
+            border-color: #252535;
+        }
+
+        .theme-toggle-btn {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            width: 100%;
+            padding: 0.55rem 0.75rem;
+            border-radius: 0.75rem;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: background 0.18s ease;
+            text-align: left;
+        }
+
+        .theme-toggle-btn:hover {
+            background: #f8f4f0;
+        }
+
+        [data-theme="dark"] .theme-toggle-btn:hover {
+            background: #1a1a22;
+        }
+
+        .toggle-track {
+            position: relative;
+            width: 38px;
+            height: 22px;
+            background: #e8e2da;
+            border-radius: 99px;
+            flex-shrink: 0;
+            transition: background 0.25s ease;
+        }
+
+        [data-theme="dark"] .toggle-track {
+            background: #7c3aed;
+        }
+
+        .toggle-thumb {
+            position: absolute;
+            top: 3px;
+            left: 3px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #fff;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+            transition: transform 0.25s ease;
+        }
+
+        [data-theme="dark"] .toggle-thumb {
+            transform: translateX(16px);
+        }
+
+        .toggle-icons {
+            font-size: 1rem;
+            line-height: 1;
+        }
+
+        .toggle-label {
+            font-size: 0.82rem;
+            font-weight: 500;
+            color: #5f6378;
+        }
+
+        [data-theme="dark"] .toggle-label {
+            color: #918fac;
+        }
+
+        .sidebar-footer-tag {
+            font-size: 0.7rem;
+            color: #9ca3af;
+            text-align: center;
+            margin: 0.5rem 0 0;
+        }
+
+        [data-theme="dark"] .sidebar-footer-tag {
+            color: #5e5c76;
+        }
+
+        .main-content {
+            flex: 1;
+            margin-left: 0;
+            min-width: 0;
+        }
+
+        @media (min-width: 768px) {
+            .main-content {
+                margin-left: 260px;
+            }
+        }
+
+        .site-header {
+            background: #ffffff;
+            border-bottom: 1px solid #e8e2da;
+            padding: 0.75rem 1rem;
+            position: sticky;
+            top: 0;
+            z-index: 30;
+        }
+
+        [data-theme="dark"] .site-header {
+            background: #121218;
+            border-color: #252535;
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .menu-toggle {
+            font-size: 1.5rem;
+            background: transparent;
+            border: none;
+            color: #1a1a1a;
+            cursor: pointer;
+            padding: 0.25rem;
+            border-radius: 0.5rem;
+        }
+
+        [data-theme="dark"] .menu-toggle {
+            color: #eeeaf8;
+        }
+
+        @media (min-width: 768px) {
+            .menu-toggle {
+                display: none;
+            }
+        }
+
+        .header-logo-mobile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1a1a1a;
+            text-decoration: none;
+        }
+
+        [data-theme="dark"] .header-logo-mobile {
+            color: #eeeaf8;
+        }
+
+        .header-logo-mobile span {
+            color: #7c3aed;
+        }
+
+        @media (min-width: 768px) {
+            .header-logo-mobile {
+                display: none;
+            }
+        }
+
+        .header-nav {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        /* ── AVATAR NO HEADER ───────────────────────────────────── */
+        .header-nav .avatar-img {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 2px solid #e8e2da;
+        }
+
+        [data-theme="dark"] .header-nav .avatar-img {
+            border-color: #252535;
+        }
+
+        .header-nav .avatar-fallback {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ede9fe;
+            color: #5b21b6;
+            font-weight: 700;
+            font-size: 0.8rem;
+            border: 2px solid #e8e2da;
+        }
+
+        [data-theme="dark"] .header-nav .avatar-fallback {
+            background: #1c1831;
+            color: #c4b5fd;
+            border-color: #252535;
+        }
+
+        .header-nav .nome {
+            color: #5f6378;
+            font-size: 0.875rem;
+            display: none;
+        }
+
+        @media (min-width: 640px) {
+            .header-nav .nome {
+                display: inline;
+            }
+        }
+
+        [data-theme="dark"] .header-nav .nome {
+            color: #918fac;
+        }
+
+        .btn-primary {
+            background: #7c3aed;
+            color: #fff;
+            padding: 0.4rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+
+        .btn-primary:hover {
+            background: #6d28d9;
+        }
+
+        .btn-sair {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .btn-sair:hover {
+            color: #ef4444;
+        }
+
+        [data-theme="dark"] .btn-sair {
+            color: #5e5c76;
+        }
+
         .category-header {
             position: relative;
             border-radius: 1.5rem;
             overflow: hidden;
             padding: 2.5rem 3rem;
             margin-bottom: 2.5rem;
-            background: linear-gradient(135deg, #ede9fe, #f3f0eb);
+            background: linear-gradient(135deg, #ede9fe, #f8f4f0);
             border: 2px solid #e8e2da;
-            transition: all 0.3s ease;
         }
 
         [data-theme="dark"] .category-header {
@@ -96,17 +570,11 @@ if (usuario_logado()) {
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             border: 2px solid #e8e2da;
             flex-shrink: 0;
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         [data-theme="dark"] .category-icon-wrapper {
             background: #121218;
             border-color: #252535;
-        }
-
-        .category-header:hover .category-icon-wrapper {
-            transform: scale(1.05) rotate(-5deg);
-            box-shadow: 0 8px 28px rgba(0,0,0,0.10);
         }
 
         .category-title {
@@ -150,7 +618,6 @@ if (usuario_logado()) {
             border-color: #252535;
         }
 
-        /* ── GRID DE NOTÍCIAS ──────────────────────────────────── */
         .category-news-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
@@ -162,7 +629,7 @@ if (usuario_logado()) {
             border: 1px solid #e8e2da;
             border-radius: 1rem;
             overflow: hidden;
-            transition: all 0.3s cubic-bezier(.4, 0, .2, 1);
+            transition: all 0.3s ease;
             box-shadow: 0 2px 8px rgba(0,0,0,0.05);
             text-decoration: none;
             display: flex;
@@ -181,15 +648,10 @@ if (usuario_logado()) {
             border-color: #ede9fe;
         }
 
-        [data-theme="dark"] .category-news-card:hover {
-            border-color: #1c1831;
-        }
-
         .category-news-image {
             height: 200px;
             overflow: hidden;
-            background: #f3f0eb;
-            position: relative;
+            background: #f8f4f0;
         }
 
         [data-theme="dark"] .category-news-image {
@@ -214,7 +676,7 @@ if (usuario_logado()) {
             align-items: center;
             justify-content: center;
             font-size: 4rem;
-            background: linear-gradient(135deg, #ede9fe, #f3f0eb);
+            background: linear-gradient(135deg, #ede9fe, #f8f4f0);
         }
 
         [data-theme="dark"] .category-news-image-placeholder {
@@ -257,7 +719,6 @@ if (usuario_logado()) {
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
-            transition: color 0.2s ease;
         }
 
         [data-theme="dark"] .category-news-title {
@@ -266,10 +727,6 @@ if (usuario_logado()) {
 
         .category-news-card:hover .category-news-title {
             color: #7c3aed;
-        }
-
-        [data-theme="dark"] .category-news-card:hover .category-news-title {
-            color: #a78bfa;
         }
 
         .category-news-excerpt {
@@ -321,7 +778,6 @@ if (usuario_logado()) {
             border-color: #252535;
         }
 
-        /* ── ESTADO VAZIO ──────────────────────────────────────── */
         .category-empty {
             text-align: center;
             padding: 4rem 2rem;
@@ -369,14 +825,39 @@ if (usuario_logado()) {
             color: #7c3aed;
             font-weight: 500;
             text-decoration: none;
-            transition: color 0.2s ease;
         }
 
         .category-empty-link:hover {
             color: #6d28d9;
         }
 
-        /* ── RESPONSIVIDADE ────────────────────────────────────── */
+        .site-footer {
+            margin-top: 4rem;
+            border-top: 1px solid #e8e2da;
+            background: #ffffff;
+            padding: 2rem 1rem;
+            text-align: center;
+        }
+
+        [data-theme="dark"] .site-footer {
+            background: #121218;
+            border-color: #252535;
+        }
+
+        .site-footer p {
+            color: #9ca3af;
+            font-size: 0.875rem;
+        }
+
+        [data-theme="dark"] .site-footer p {
+            color: #5e5c76;
+        }
+
+        .site-footer span {
+            color: #7c3aed;
+            font-weight: 700;
+        }
+
         @media (max-width: 1024px) {
             .category-header {
                 padding: 2rem;
@@ -442,35 +923,6 @@ if (usuario_logado()) {
                 font-size: 0.95rem;
             }
         }
-
-        /* ── ANIMAÇÃO DE ENTRADA ──────────────────────────────── */
-        @keyframes categoryFadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .category-news-card {
-            animation: categoryFadeIn 0.4s ease-out both;
-        }
-
-        .category-news-card:nth-child(1) { animation-delay: 0.05s; }
-        .category-news-card:nth-child(2) { animation-delay: 0.10s; }
-        .category-news-card:nth-child(3) { animation-delay: 0.15s; }
-        .category-news-card:nth-child(4) { animation-delay: 0.20s; }
-        .category-news-card:nth-child(5) { animation-delay: 0.25s; }
-        .category-news-card:nth-child(6) { animation-delay: 0.30s; }
-        .category-news-card:nth-child(7) { animation-delay: 0.35s; }
-        .category-news-card:nth-child(8) { animation-delay: 0.40s; }
-        .category-news-card:nth-child(9) { animation-delay: 0.45s; }
-        .category-news-card:nth-child(10) { animation-delay: 0.50s; }
-        .category-news-card:nth-child(11) { animation-delay: 0.55s; }
-        .category-news-card:nth-child(12) { animation-delay: 0.60s; }
     </style>
 
     <script>
@@ -480,13 +932,12 @@ if (usuario_logado()) {
         })();
     </script>
 </head>
-<body class="min-h-screen flex">
+<body>
 
     <div id="sidebar-overlay" class="sidebar-overlay"></div>
 
-    <aside id="sidebar" class="sidebar w-64 fixed h-full z-50 flex-col p-5 overflow-y-auto hidden md:flex">
-
-        <div class="mb-7">
+    <aside id="sidebar" class="sidebar">
+        <div>
             <a href="../../index.php" class="sidebar-logo">
                 <div class="logo-icon">🎮</div>
                 <div>
@@ -497,7 +948,7 @@ if (usuario_logado()) {
         </div>
 
         <div class="sidebar-section-label">Menu</div>
-        <nav class="sidebar-nav mb-4">
+        <nav class="sidebar-nav">
             <a href="../../index.php" class="nav-link">
                 <span class="nav-icon">🏠</span>
                 Início
@@ -530,7 +981,7 @@ if (usuario_logado()) {
 
         <?php if (!empty($categorias)): ?>
         <div class="sidebar-section-label">Categorias</div>
-        <nav class="sidebar-categories mb-4">
+        <nav class="sidebar-categories">
             <?php foreach ($categorias as $cat): ?>
                 <a href="categoria.php?slug=<?= $cat['slug'] ?>"
                    class="nav-link <?= $cat['id'] === $categoria['id'] ? 'active' : '' ?>">
@@ -551,57 +1002,42 @@ if (usuario_logado()) {
             </button>
             <p class="sidebar-footer-tag">GGNews &copy; <?= date('Y') ?></p>
         </div>
-
     </aside>
 
-    <div class="flex-1 md:ml-64 min-w-0">
+    <div class="main-content">
 
-        <header class="site-header sticky top-0 z-30 px-4 py-3">
-            <div class="max-w-7xl mx-auto flex items-center justify-between">
-
-                <div class="flex items-center gap-3">
-                    <button id="menu-toggle"
-                            class="md:hidden text-2xl p-1.5 rounded-lg transition"
-                            style="color:var(--text-primary); background:transparent;"
-                            aria-label="Abrir menu"
-                            aria-expanded="false"
-                            aria-controls="sidebar">
-                        ☰
-                    </button>
-                    <a href="../../index.php" class="flex items-center gap-2 md:hidden text-lg font-bold"
-                       style="color:var(--text-primary); text-decoration:none;">
-                        🎮 <span style="color:var(--accent)">GG</span>News
+        <header class="site-header">
+            <div class="header-inner">
+                <div class="header-left">
+                    <button id="menu-toggle" class="menu-toggle" aria-label="Abrir menu">☰</button>
+                    <a href="../../index.php" class="header-logo-mobile">
+                        🎮 <span>GG</span>News
                     </a>
                 </div>
 
-                <nav class="flex items-center gap-3">
+                <nav class="header-nav">
                     <?php if (usuario_logado()): ?>
-                        <div class="flex items-center gap-2">
-                            <?= render_avatar($usuario_logado, 32) ?>
-                            <span class="hidden sm:inline text-sm" style="color:var(--text-secondary)">
-                                Olá, <?= escape(get_usuario_nome()) ?>
-                            </span>
-                        </div>
-                        <a href="../../pages/noticias/dashboard.php" class="btn-primary text-sm px-4 py-2">
-                            Painel
-                        </a>
-                        <a href="../../pages/auth/logout.php"
-                           style="color:var(--text-muted); font-size:.875rem; text-decoration:none;">Sair</a>
+                        <!-- AVATAR DO USUÁRIO LOGADO -->
+                        <?php 
+                        $foto_usuario = get_usuario_foto();
+                        if ($foto_usuario): ?>
+                            <img src="../../uploads/<?= escape($foto_usuario) ?>" class="avatar-img" alt="Avatar">
+                        <?php else: ?>
+                            <div class="avatar-fallback"><?= get_avatar_initials(get_usuario_nome()) ?></div>
+                        <?php endif; ?>
+                        <span class="nome">Olá, <?= escape(get_usuario_nome()) ?></span>
+                        <a href="../../pages/noticias/dashboard.php" class="btn-primary">Painel</a>
+                        <a href="../../pages/auth/logout.php" class="btn-sair">Sair</a>
                     <?php else: ?>
-                        <a href="../../pages/auth/login.php"
-                           style="color:var(--text-secondary); font-size:.875rem; text-decoration:none;">Login</a>
-                        <a href="../../pages/auth/cadastro.php" class="btn-primary text-sm px-4 py-2">
-                            Cadastrar
-                        </a>
+                        <a href="../../pages/auth/login.php" class="btn-sair" style="color:#7c3aed;">Login</a>
+                        <a href="../../pages/auth/cadastro.php" class="btn-primary">Cadastrar</a>
                     <?php endif; ?>
                 </nav>
-
             </div>
         </header>
 
-        <main class="max-w-7xl mx-auto px-4 py-8">
+        <main style="max-width:1200px; margin:0 auto; padding:2rem 1rem;">
 
-            <!-- HEADER DA CATEGORIA -->
             <div class="category-header">
                 <div class="category-header-content">
                     <div class="category-icon-wrapper">
@@ -617,18 +1053,14 @@ if (usuario_logado()) {
                 </div>
             </div>
 
-            <!-- GRID DE NOTÍCIAS -->
             <?php if (empty($noticias)): ?>
                 <div class="category-empty">
                     <div class="category-empty-icon">📭</div>
                     <h2 class="category-empty-title">Nenhuma notícia encontrada</h2>
                     <p class="category-empty-text">
-                        Ainda não há notícias publicadas nesta categoria. 
-                        Volte em breve para novidades!
+                        Ainda não há notícias publicadas nesta categoria. Volte em breve para novidades!
                     </p>
-                    <a href="../../index.php" class="category-empty-link">
-                        ← Voltar para o início
-                    </a>
+                    <a href="../../index.php" class="category-empty-link">← Voltar para o início</a>
                 </div>
             <?php else: ?>
                 <div class="category-news-grid">
@@ -648,12 +1080,8 @@ if (usuario_logado()) {
                                     <?= $categoria['icone'] ?>
                                     <?= escape($categoria['nome']) ?>
                                 </span>
-                                <h3 class="category-news-title">
-                                    <?= escape($noticia['titulo']) ?>
-                                </h3>
-                                <p class="category-news-excerpt">
-                                    <?= escape(resumo_texto($noticia['noticia'], 120)) ?>
-                                </p>
+                                <h3 class="category-news-title"><?= escape($noticia['titulo']) ?></h3>
+                                <p class="category-news-excerpt"><?= escape(resumo_texto($noticia['noticia'], 120)) ?></p>
                                 <div class="category-news-footer">
                                     <span class="category-news-author">
                                         <?php if ($noticia['autor_foto']): ?>
@@ -673,13 +1101,8 @@ if (usuario_logado()) {
 
         </main>
 
-        <footer class="mt-16 border-t" style="background:var(--bg-surface); border-color:var(--border)">
-            <div class="max-w-7xl mx-auto px-4 py-8 text-center">
-                <p class="text-sm" style="color:var(--text-muted)">
-                    🎮 <span style="color:var(--accent); font-weight:700">GG</span>News
-                    &copy; <?= date('Y') ?> — Portal de Notícias de Games e E-Sports
-                </p>
-            </div>
+        <footer class="site-footer">
+            <p>🎮 <span>GG</span>News &copy; <?= date('Y') ?> — Portal de Notícias de Games e E-Sports</p>
         </footer>
 
     </div>

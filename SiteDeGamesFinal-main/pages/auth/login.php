@@ -1,356 +1,284 @@
 <?php
 // =====================================================
-// PÁGINA DE LOGIN - CORRIGIDO E PADRONIZADO
+// PÁGINA DE LOGIN
 // Arquivo: pages/auth/login.php
 // =====================================================
 
-// Inicia a sessão se não estiver ativa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Inclui os arquivos necessários
-require_once __DIR__ . '/../../includes/funcoes.php';
 require_once __DIR__ . '/../../includes/conexao.php';
+require_once __DIR__ . '/../../includes/funcoes.php';
 
-// Se já estiver logado, redireciona
+// Se já está logado, redireciona para o dashboard
 if (usuario_logado()) {
-    redirecionar('/');
+    header("Location: ../../pages/noticias/dashboard.php");
     exit;
 }
 
 $erro = '';
-$email = '';
 
-// Processa o formulário de login
+// Processa o formulário quando enviado via POST
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verifica token CSRF
-    if (!isset($_POST['csrf_token']) || !verificar_token_csrf($_POST['csrf_token'])) {
-        $erro = 'Token de segurança inválido. Tente novamente.';
+    $email = trim($_POST['email'] ?? '');
+    $senha = $_POST['senha'] ?? '';
+
+    if (empty($email) || empty($senha)) {
+        $erro = 'Preencha todos os campos.';
     } else {
-        $email = trim($_POST['email'] ?? '');
-        $senha = $_POST['senha'] ?? '';
+        // Busca o usuário pelo email no banco de dados
+        $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE email = ?");
+        $stmt->execute([$email]);
+        $usuario = $stmt->fetch();
 
-        // Valida campos
-        if (empty($email) || empty($senha)) {
-            $erro = 'Preencha todos os campos.';
-        } elseif (!validar_email($email)) {
-            $erro = 'Digite um email válido.';
-        } elseif (!validar_senha($senha)) {
-            $erro = 'A senha deve ter pelo menos 6 caracteres.';
+        // Verifica se o usuário existe e se a senha está correta
+        if ($usuario && password_verify($senha, $usuario['senha'])) {
+            $_SESSION['usuario_id'] = $usuario['id'];
+            $_SESSION['usuario_nome'] = $usuario['nome'];
+            $_SESSION['usuario_foto'] = $usuario['foto'];
+
+            set_mensagem('sucesso', 'Bem-vindo de volta, ' . $usuario['nome'] . '!');
+            header("Location: ../../pages/noticias/dashboard.php");
+            exit;
         } else {
-            try {
-                // Verifica se a conexão existe
-                if (!isset($conn)) {
-                    throw new Exception("Conexão com o banco de dados não disponível.");
-                }
-
-                // Busca o usuário pelo email
-                $stmt = $conn->prepare("SELECT * FROM usuarios WHERE email = ?");
-                $stmt->execute([$email]);
-                $usuario = $stmt->fetch(PDO::FETCH_ASSOC);
-
-                // Verifica se o usuário existe e a senha está correta
-                if ($usuario && password_verify($senha, $usuario['senha'])) {
-                    // Regenera o ID da sessão por segurança
-                    session_regenerate_id(true);
-                    
-                    // Armazena os dados do usuário na sessão
-                    $_SESSION['usuario_id'] = (int) $usuario['id'];
-                    $_SESSION['usuario_nome'] = $usuario['nome'];
-                    $_SESSION['usuario_email'] = $usuario['email'];
-                    $_SESSION['usuario_foto'] = $usuario['foto'] ?? null;
-                    $_SESSION['usuario_admin'] = $usuario['admin'] ?? 0;
-                    
-                    // Registra o login
-                    error_log("Login realizado: " . $usuario['email'] . " (" . $_SERVER['REMOTE_ADDR'] . ")");
-                    
-                    // Mensagem de boas-vindas
-                    set_mensagem('sucesso', 'Bem-vindo de volta, ' . $usuario['nome'] . '!');
-                    
-                    // Redireciona para o dashboard ou página anterior
-                    $redirect = $_POST['redirect'] ?? '/';
-                    redirecionar($redirect);
-                    exit;
-                } else {
-                    // Log de tentativa de login falha
-                    error_log("Tentativa de login falha para: " . $email . " (" . $_SERVER['REMOTE_ADDR'] . ")");
-                    $erro = 'Email ou senha incorretos.';
-                    
-                    // Delay para evitar brute force
-                    sleep(1);
-                }
-                
-            } catch (PDOException $e) {
-                error_log("Erro no login (PDO): " . $e->getMessage());
-                $erro = 'Erro ao fazer login. Tente novamente mais tarde.';
-            } catch (Exception $e) {
-                error_log("Erro no login: " . $e->getMessage());
-                $erro = 'Erro ao processar o login. Tente novamente.';
-            }
+            $erro = 'Email ou senha incorretos.';
         }
     }
 }
-
-// Gera token CSRF para o formulário
-$csrf_token = gerar_token_csrf();
-
-// Pega a URL de redirecionamento (se houver)
-$redirect_url = $_GET['redirect'] ?? '/';
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - GGNews Portal de Games & E-Sports</title>
+    <title>Login - Portal Games & E-Sports</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/style.css">
-    
+    <link rel="stylesheet" href="../../css/style.css">
+
     <style>
-        :root {
-            --bg-body: #0c0c10;
-            --bg-card: #1a1a2e;
-            --bg-surface: #121218;
-            --border: #252535;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --text-primary: #eeeaf8;
-            --text-secondary: #b8b5d0;
-            --text-muted: #5e5c76;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background: var(--bg-body);
-            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            background: #0f0f0f;
+            color: #ffffff;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 0 1rem;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            padding: 1rem;
         }
 
-        .login-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+        .container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .logo-area h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .logo-area h1 span {
+            color: #7c3aed;
+        }
+
+        .logo-area p {
+            color: #9ca3af;
+            margin-top: 0.25rem;
+        }
+
+        .card {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
             border-radius: 1rem;
             padding: 2rem;
-            width: 100%;
-            max-width: 28rem;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
-        .input-field {
-            background: var(--bg-body);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .input-field:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
-        }
-
-        .input-field::placeholder {
-            color: var(--text-muted);
-        }
-
-        .btn-login {
-            background: var(--accent);
-            color: #fff;
-            font-weight: 700;
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            border: none;
-            cursor: pointer;
-            transition: background 0.2s ease, transform 0.15s ease;
-        }
-
-        .btn-login:hover {
-            background: var(--accent-light);
-            transform: scale(1.02);
-        }
-
-        .btn-login:active {
-            transform: scale(0.98);
-        }
-
-        .link-purple {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .link-purple:hover {
-            color: var(--accent-light);
-            text-decoration: underline;
-        }
-
-        .text-secondary {
-            color: var(--text-secondary);
-        }
-
-        .text-muted {
-            color: var(--text-muted);
-        }
-
-        .error-box {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
+        .msg-erro {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid #ef4444;
             color: #f87171;
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
+            font-size: 0.9rem;
         }
 
-        .success-box {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
+        .msg-sucesso {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid #10b981;
             color: #34d399;
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
+            font-size: 0.9rem;
         }
 
-        .logo-text {
-            font-size: 2.25rem;
-            font-weight: 700;
-            color: var(--text-primary);
+        .form-group {
+            margin-bottom: 1.25rem;
         }
 
-        .logo-text span {
-            color: var(--accent);
+        .form-label {
+            display: block;
+            color: #9ca3af;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.375rem;
         }
 
-        .logo-sub {
-            color: var(--text-muted);
-            margin-top: 0.25rem;
+        .form-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: #0f0f0f;
+            border: 1px solid #2a2a3e;
+            border-radius: 0.5rem;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .form-input::placeholder {
+            color: #4a4a5e;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+        }
+
+        .btn-login {
+            width: 100%;
+            background: #7c3aed;
+            color: #ffffff;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-top: 0.5rem;
+        }
+
+        .btn-login:hover {
+            background: #6d28d9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3);
+        }
+
+        .footer-links {
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+
+        .footer-links p {
+            color: #9ca3af;
+            font-size: 0.9rem;
+        }
+
+        .footer-links a {
+            color: #7c3aed;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .footer-links a:hover {
+            color: #a78bfa;
+            text-decoration: underline;
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: #4a4a5e;
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .back-link:hover {
+            color: #9ca3af;
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 1.5rem;
+            }
+
+            .logo-area h1 {
+                font-size: 2rem;
+            }
         }
     </style>
 </head>
 <body>
 
-    <div class="login-card">
-        <!-- Logo -->
-        <div class="text-center mb-6">
-            <a href="<?= BASE_URL ?>" class="no-underline">
-                <div class="logo-text">
-                    🎮 <span>GG</span>News
-                </div>
-                <p class="logo-sub text-sm">Portal de Games & E-Sports</p>
-            </a>
-            <h1 class="text-xl font-semibold mt-4" style="color:var(--text-primary)">Entrar na sua conta</h1>
+    <div class="container">
+
+        <!-- LOGO -->
+        <div class="logo-area">
+            <h1>🎮 <span>GG</span>News</h1>
+            <p>Entre na sua conta</p>
         </div>
 
-        <!-- Mensagens de erro -->
-        <?php if ($erro): ?>
-            <div class="error-box">
-                <?= escape($erro) ?>
-            </div>
-        <?php endif; ?>
+        <!-- CARD -->
+        <div class="card">
 
-        <!-- Mensagens flash -->
-        <?php $msg = get_mensagem(); if ($msg): ?>
-            <div class="<?= $msg['tipo'] === 'sucesso' ? 'success-box' : 'error-box' ?>">
-                <?= escape($msg['texto']) ?>
-            </div>
-        <?php endif; ?>
+            <?php if ($erro): ?>
+                <div class="msg-erro"><?= escape($erro) ?></div>
+            <?php endif; ?>
 
-        <!-- Formulário de login -->
-        <form method="POST" action="" autocomplete="off">
-            <!-- Token CSRF -->
-            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
-            
-            <!-- Redirect -->
-            <input type="hidden" name="redirect" value="<?= escape($redirect_url) ?>">
-
-            <!-- Email -->
-            <div class="mb-4">
-                <label for="email" class="block text-sm font-medium mb-1" style="color:var(--text-secondary)">
-                    Email
-                </label>
-                <input type="email" 
-                       id="email" 
-                       name="email" 
-                       value="<?= escape($email) ?>" 
-                       class="input-field" 
-                       placeholder="seu@email.com" 
-                       required 
-                       autofocus>
-            </div>
-
-            <!-- Senha -->
-            <div class="mb-6">
-                <div class="flex items-center justify-between mb-1">
-                    <label for="senha" class="block text-sm font-medium" style="color:var(--text-secondary)">
-                        Senha
-                    </label>
-                    <a href="#" class="text-xs link-purple" onclick="alert('Funcionalidade em desenvolvimento. Entre em contato com o suporte.')">
-                        Esqueceu a senha?
-                    </a>
+            <?php $msg = get_mensagem(); if ($msg): ?>
+                <div class="<?= $msg['tipo'] === 'sucesso' ? 'msg-sucesso' : 'msg-erro' ?>">
+                    <?= escape($msg['texto']) ?>
                 </div>
-                <input type="password" 
-                       id="senha" 
-                       name="senha" 
-                       class="input-field" 
-                       placeholder="••••••••" 
-                       required 
-                       minlength="6">
+            <?php endif; ?>
+
+            <form method="POST">
+
+                <div class="form-group">
+                    <label for="email" class="form-label">📧 E-mail</label>
+                    <input type="email" id="email" name="email"
+                           value="<?= escape($email ?? '') ?>"
+                           class="form-input"
+                           placeholder="seu@email.com"
+                           required>
+                </div>
+
+                <div class="form-group">
+                    <label for="senha" class="form-label">🔒 Senha</label>
+                    <input type="password" id="senha" name="senha"
+                           class="form-input"
+                           placeholder="••••••••"
+                           required>
+                </div>
+
+                <button type="submit" class="btn-login">Entrar</button>
+
+            </form>
+
+            <div class="footer-links">
+                <p>Não tem conta? <a href="cadastro.php">Cadastre-se</a></p>
             </div>
 
-            <!-- Botão -->
-            <button type="submit" class="btn-login">
-                Entrar
-            </button>
-        </form>
-
-        <!-- Link para cadastro -->
-        <p class="text-center mt-6" style="color:var(--text-secondary)">
-            Não tem conta?
-            <a href="<?= BASE_URL ?>pages/auth/cadastro.php" class="link-purple">
-                Cadastre-se
-            </a>
-        </p>
-
-        <!-- Voltar -->
-        <div class="text-center mt-4">
-            <a href="<?= BASE_URL ?>" class="text-sm" style="color:var(--text-muted); text-decoration:none;">
-                ← Voltar para o portal
-            </a>
         </div>
+
+        <a href="../../index.php" class="back-link">← Voltar para o portal</a>
+
     </div>
-
-    <!-- Script para prevenir submissão dupla -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.querySelector('form');
-            const btn = form.querySelector('.btn-login');
-            let submitted = false;
-
-            form.addEventListener('submit', function(e) {
-                if (submitted) {
-                    e.preventDefault();
-                    return;
-                }
-                submitted = true;
-                btn.textContent = 'Entrando...';
-                btn.disabled = true;
-                btn.style.opacity = '0.7';
-            });
-
-            // Prevenir que o navegador salve senhas em modo inseguro
-            if (window.location.protocol !== 'https:') {
-                console.warn('⚠️ Conexão não é HTTPS. Considere usar SSL para segurança.');
-            }
-        });
-    </script>
 
 </body>
 </html>

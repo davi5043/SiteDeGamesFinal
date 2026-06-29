@@ -1,592 +1,286 @@
 <?php
 // =====================================================
-// PÁGINA DE CADASTRO - CORRIGIDO E PADRONIZADO
+// PÁGINA DE CADASTRO
 // Arquivo: pages/auth/cadastro.php
 // =====================================================
 
-// Inicia a sessão se não estiver ativa
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
-
-// Inclui os arquivos necessários
-require_once __DIR__ . '/../../includes/funcoes.php';
 require_once __DIR__ . '/../../includes/conexao.php';
+require_once __DIR__ . '/../../includes/funcoes.php';
 
-// Se já estiver logado, redireciona
 if (usuario_logado()) {
-    redirecionar('/');
+    header("Location: ../../pages/noticias/dashboard.php");
     exit;
 }
 
 $erro = '';
-$nome = '';
-$email = '';
 
-// Processa o formulário de cadastro
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    // Verifica token CSRF
-    if (!isset($_POST['csrf_token']) || !verificar_token_csrf($_POST['csrf_token'])) {
-        $erro = 'Token de segurança inválido. Tente novamente.';
+    $nome = trim($_POST['nome'] ?? '');
+    $email = trim($_POST['email'] ?? '');
+    $senha = $_POST['senha'] ?? '';
+    $confirmar_senha = $_POST['confirmar_senha'] ?? '';
+
+    if (empty($nome) || empty($email) || empty($senha) || empty($confirmar_senha)) {
+        $erro = 'Preencha todos os campos.';
+    } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $erro = 'Email inválido.';
+    } elseif (strlen($senha) < 6) {
+        $erro = 'A senha deve ter no mínimo 6 caracteres.';
+    } elseif ($senha !== $confirmar_senha) {
+        $erro = 'As senhas não coincidem.';
     } else {
-        $nome = trim($_POST['nome'] ?? '');
-        $email = trim($_POST['email'] ?? '');
-        $senha = $_POST['senha'] ?? '';
-        $confirmar_senha = $_POST['confirmar_senha'] ?? '';
+        $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE email = ?");
+        $stmt->execute([$email]);
 
-        // Validações
-        if (empty($nome) || empty($email) || empty($senha) || empty($confirmar_senha)) {
-            $erro = 'Preencha todos os campos.';
-        } elseif (strlen($nome) < 2) {
-            $erro = 'O nome deve ter pelo menos 2 caracteres.';
-        } elseif (!validar_email($email)) {
-            $erro = 'Digite um email válido.';
-        } elseif (!validar_senha($senha)) {
-            $erro = 'A senha deve ter no mínimo 6 caracteres.';
-        } elseif ($senha !== $confirmar_senha) {
-            $erro = 'As senhas não coincidem.';
+        if ($stmt->fetch()) {
+            $erro = 'Este email já está cadastrado.';
         } else {
-            try {
-                // Verifica se a conexão existe
-                if (!isset($conn)) {
-                    throw new Exception("Conexão com o banco de dados não disponível.");
-                }
+            $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
+            $stmt = $pdo->prepare("INSERT INTO usuarios (nome, email, senha) VALUES (?, ?, ?)");
+            $stmt->execute([$nome, $email, $senha_hash]);
 
-                // Verifica se o email já está cadastrado
-                $stmt = $conn->prepare("SELECT id FROM usuarios WHERE email = ?");
-                $stmt->execute([$email]);
-
-                if ($stmt->fetch()) {
-                    $erro = 'Este email já está cadastrado.';
-                } else {
-                    // Hash da senha
-                    $senha_hash = password_hash($senha, PASSWORD_DEFAULT);
-                    
-                    // Insere o usuário
-                    $stmt = $conn->prepare("
-                        INSERT INTO usuarios (nome, email, senha, data_cadastro) 
-                        VALUES (?, ?, ?, NOW())
-                    ");
-                    $stmt->execute([$nome, $email, $senha_hash]);
-
-                    // Registra o cadastro
-                    error_log("Novo usuário cadastrado: " . $email . " (" . $_SERVER['REMOTE_ADDR'] . ")");
-
-                    // Mensagem de sucesso
-                    set_mensagem('sucesso', 'Conta criada com sucesso! Faça login para começar.');
-                    
-                    // Redireciona para o login
-                    redirecionar('pages/auth/login.php');
-                    exit;
-                }
-            } catch (PDOException $e) {
-                error_log("Erro no cadastro (PDO): " . $e->getMessage());
-                $erro = 'Erro ao cadastrar. Tente novamente mais tarde.';
-            } catch (Exception $e) {
-                error_log("Erro no cadastro: " . $e->getMessage());
-                $erro = 'Erro ao processar o cadastro. Tente novamente.';
-            }
+            set_mensagem('sucesso', 'Conta criada com sucesso! Faça login.');
+            header("Location: login.php");
+            exit;
         }
     }
 }
-
-// Gera token CSRF para o formulário
-$csrf_token = gerar_token_csrf();
 ?>
 <!DOCTYPE html>
-<html lang="pt-BR" data-theme="dark">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cadastro - GGNews Portal de Games & E-Sports</title>
+    <title>Cadastro - Portal Games & E-Sports</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="<?= BASE_URL ?>css/style.css">
-    
+    <link rel="stylesheet" href="../../css/style.css">
+
     <style>
-        :root {
-            --bg-body: #0c0c10;
-            --bg-card: #1a1a2e;
-            --bg-surface: #121218;
-            --border: #252535;
-            --accent: #7c3aed;
-            --accent-light: #6d28d9;
-            --text-primary: #eeeaf8;
-            --text-secondary: #b8b5d0;
-            --text-muted: #5e5c76;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background: var(--bg-body);
-            color: var(--text-primary);
+            font-family: 'Inter', sans-serif;
+            background: #0f0f0f;
+            color: #ffffff;
             min-height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 1rem;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
         }
 
-        .cadastro-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
+        .container {
+            width: 100%;
+            max-width: 420px;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .logo-area h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: #ffffff;
+        }
+
+        .logo-area h1 span {
+            color: #7c3aed;
+        }
+
+        .logo-area p {
+            color: #9ca3af;
+            margin-top: 0.25rem;
+        }
+
+        .card {
+            background: #1a1a2e;
+            border: 1px solid #2a2a3e;
             border-radius: 1rem;
             padding: 2rem;
-            width: 100%;
-            max-width: 28rem;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
         }
 
-        .input-field {
-            background: var(--bg-body);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .input-field:focus {
-            outline: none;
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
-        }
-
-        .input-field::placeholder {
-            color: var(--text-muted);
-        }
-
-        .input-field.error {
-            border-color: #ef4444;
-            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-        }
-
-        .input-field.success {
-            border-color: #10b981;
-            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
-        }
-
-        .btn-cadastrar {
-            background: var(--accent);
-            color: #fff;
-            font-weight: 700;
-            padding: 0.75rem 1rem;
-            border-radius: 0.5rem;
-            width: 100%;
-            border: none;
-            cursor: pointer;
-            transition: background 0.2s ease, transform 0.15s ease;
-        }
-
-        .btn-cadastrar:hover {
-            background: var(--accent-light);
-            transform: scale(1.02);
-        }
-
-        .btn-cadastrar:active {
-            transform: scale(0.98);
-        }
-
-        .btn-cadastrar:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .link-purple {
-            color: var(--accent);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .link-purple:hover {
-            color: var(--accent-light);
-            text-decoration: underline;
-        }
-
-        .text-secondary {
-            color: var(--text-secondary);
-        }
-
-        .text-muted {
-            color: var(--text-muted);
-        }
-
-        .error-box {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
+        .msg-erro {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid #ef4444;
             color: #f87171;
             padding: 0.75rem 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1.5rem;
+            font-size: 0.9rem;
         }
 
-        .success-box {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            color: #34d399;
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-label {
+            display: block;
+            color: #9ca3af;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.375rem;
+        }
+
+        .form-input {
+            width: 100%;
             padding: 0.75rem 1rem;
+            background: #0f0f0f;
+            border: 1px solid #2a2a3e;
             border-radius: 0.5rem;
-            margin-bottom: 1.5rem;
+            color: #ffffff;
+            font-family: inherit;
+            font-size: 0.95rem;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
 
-        .logo-text {
-            font-size: 2.25rem;
-            font-weight: 700;
-            color: var(--text-primary);
+        .form-input::placeholder {
+            color: #4a4a5e;
         }
 
-        .logo-text span {
-            color: var(--accent);
+        .form-input:focus {
+            outline: none;
+            border-color: #7c3aed;
+            box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
         }
 
-        .logo-sub {
-            color: var(--text-muted);
-            margin-top: 0.25rem;
-        }
-
-        .senha-forca {
-            height: 4px;
-            border-radius: 2px;
+        .btn-cadastro {
+            width: 100%;
+            background: #7c3aed;
+            color: #ffffff;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
             margin-top: 0.5rem;
-            background: var(--border);
-            transition: width 0.3s ease, background 0.3s ease;
-            width: 0%;
         }
 
-        .senha-forca.fraca { width: 33%; background: #ef4444; }
-        .senha-forca.media { width: 66%; background: #f59e0b; }
-        .senha-forca.forte { width: 100%; background: #10b981; }
-
-        .senha-dica {
-            font-size: 0.75rem;
-            margin-top: 0.25rem;
-            color: var(--text-muted);
+        .btn-cadastro:hover {
+            background: #6d28d9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 14px rgba(124, 58, 237, 0.3);
         }
 
-        .senha-dica.valida {
-            color: #10b981;
+        .footer-links {
+            text-align: center;
+            margin-top: 1.5rem;
         }
 
-        .senha-dica.invalida {
-            color: #ef4444;
+        .footer-links p {
+            color: #9ca3af;
+            font-size: 0.9rem;
+        }
+
+        .footer-links a {
+            color: #7c3aed;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.2s ease;
+        }
+
+        .footer-links a:hover {
+            color: #a78bfa;
+            text-decoration: underline;
+        }
+
+        .back-link {
+            display: block;
+            text-align: center;
+            margin-top: 1.5rem;
+            color: #4a4a5e;
+            font-size: 0.875rem;
+            text-decoration: none;
+            transition: color 0.2s ease;
+        }
+
+        .back-link:hover {
+            color: #9ca3af;
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 1.5rem;
+            }
+
+            .logo-area h1 {
+                font-size: 2rem;
+            }
         }
     </style>
 </head>
 <body>
 
-    <div class="cadastro-card">
-        <!-- Logo -->
-        <div class="text-center mb-6">
-            <a href="<?= BASE_URL ?>" class="no-underline">
-                <div class="logo-text">
-                    🎮 <span>GG</span>News
-                </div>
-                <p class="logo-sub text-sm">Portal de Games & E-Sports</p>
-            </a>
-            <h1 class="text-xl font-semibold mt-4" style="color:var(--text-primary)">Criar nova conta</h1>
+    <div class="container">
+
+        <div class="logo-area">
+            <h1>🎮 <span>GG</span>News</h1>
+            <p>Crie sua conta</p>
         </div>
 
-        <!-- Mensagens de erro -->
-        <?php if ($erro): ?>
-            <div class="error-box">
-                <?= escape($erro) ?>
-            </div>
-        <?php endif; ?>
+        <div class="card">
 
-        <!-- Mensagens flash -->
-        <?php $msg = get_mensagem(); if ($msg): ?>
-            <div class="<?= $msg['tipo'] === 'sucesso' ? 'success-box' : 'error-box' ?>">
-                <?= escape($msg['texto']) ?>
-            </div>
-        <?php endif; ?>
+            <?php if ($erro): ?>
+                <div class="msg-erro"><?= escape($erro) ?></div>
+            <?php endif; ?>
 
-        <!-- Formulário de cadastro -->
-        <form method="POST" action="" id="formCadastro" autocomplete="off" novalidate>
-            <!-- Token CSRF -->
-            <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
+            <form method="POST">
 
-            <!-- Nome -->
-            <div class="mb-4">
-                <label for="nome" class="block text-sm font-medium mb-1" style="color:var(--text-secondary)">
-                    Nome completo
-                </label>
-                <input type="text" 
-                       id="nome" 
-                       name="nome" 
-                       value="<?= escape($nome) ?>" 
-                       class="input-field" 
-                       placeholder="Seu nome completo" 
-                       required 
-                       minlength="2"
-                       autofocus>
-                <small class="senha-dica" id="nome-dica">Mínimo 2 caracteres</small>
-            </div>
-
-            <!-- Email -->
-            <div class="mb-4">
-                <label for="email" class="block text-sm font-medium mb-1" style="color:var(--text-secondary)">
-                    Email
-                </label>
-                <input type="email" 
-                       id="email" 
-                       name="email" 
-                       value="<?= escape($email) ?>" 
-                       class="input-field" 
-                       placeholder="seu@email.com" 
-                       required>
-                <small class="senha-dica" id="email-dica">Digite um email válido</small>
-            </div>
-
-            <!-- Senha -->
-            <div class="mb-4">
-                <label for="senha" class="block text-sm font-medium mb-1" style="color:var(--text-secondary)">
-                    Senha
-                </label>
-                <input type="password" 
-                       id="senha" 
-                       name="senha" 
-                       class="input-field" 
-                       placeholder="Mínimo 6 caracteres" 
-                       required 
-                       minlength="6">
-                <div class="senha-forca" id="senha-forca"></div>
-                <div class="flex justify-between mt-1">
-                    <small class="senha-dica" id="senha-dica">Mínimo 6 caracteres</small>
-                    <small class="senha-dica" id="senha-forca-texto"></small>
+                <div class="form-group">
+                    <label for="nome" class="form-label">👤 Nome completo</label>
+                    <input type="text" id="nome" name="nome"
+                           value="<?= escape($nome ?? '') ?>"
+                           class="form-input"
+                           placeholder="Seu nome"
+                           required>
                 </div>
+
+                <div class="form-group">
+                    <label for="email" class="form-label">📧 E-mail</label>
+                    <input type="email" id="email" name="email"
+                           value="<?= escape($email ?? '') ?>"
+                           class="form-input"
+                           placeholder="seu@email.com"
+                           required>
+                </div>
+
+                <div class="form-group">
+                    <label for="senha" class="form-label">🔒 Senha</label>
+                    <input type="password" id="senha" name="senha"
+                           class="form-input"
+                           placeholder="Mínimo 6 caracteres"
+                           required>
+                </div>
+
+                <div class="form-group">
+                    <label for="confirmar_senha" class="form-label">🔒 Confirmar senha</label>
+                    <input type="password" id="confirmar_senha" name="confirmar_senha"
+                           class="form-input"
+                           placeholder="Repita a senha"
+                           required>
+                </div>
+
+                <button type="submit" class="btn-cadastro">Criar Conta</button>
+
+            </form>
+
+            <div class="footer-links">
+                <p>Já tem conta? <a href="login.php">Faça login</a></p>
             </div>
 
-            <!-- Confirmar Senha -->
-            <div class="mb-6">
-                <label for="confirmar_senha" class="block text-sm font-medium mb-1" style="color:var(--text-secondary)">
-                    Confirmar senha
-                </label>
-                <input type="password" 
-                       id="confirmar_senha" 
-                       name="confirmar_senha" 
-                       class="input-field" 
-                       placeholder="Repita a senha" 
-                       required 
-                       minlength="6">
-                <small class="senha-dica" id="confirmar-dica">As senhas devem coincidir</small>
-            </div>
-
-            <!-- Termos -->
-            <div class="mb-6">
-                <label class="flex items-start gap-2 text-sm" style="color:var(--text-secondary)">
-                    <input type="checkbox" id="termos" name="termos" required>
-                    <span>
-                        Li e aceito os 
-                        <a href="#" class="link-purple" onclick="alert('Termos de uso em desenvolvimento.')">termos de uso</a> 
-                        e 
-                        <a href="#" class="link-purple" onclick="alert('Política de privacidade em desenvolvimento.')">política de privacidade</a>
-                    </span>
-                </label>
-            </div>
-
-            <!-- Botão -->
-            <button type="submit" class="btn-cadastrar" id="btnCadastrar">
-                Criar Conta
-            </button>
-        </form>
-
-        <!-- Link para login -->
-        <p class="text-center mt-6" style="color:var(--text-secondary)">
-            Já tem conta?
-            <a href="<?= BASE_URL ?>pages/auth/login.php" class="link-purple">
-                Faça login
-            </a>
-        </p>
-
-        <!-- Voltar -->
-        <div class="text-center mt-4">
-            <a href="<?= BASE_URL ?>" class="text-sm" style="color:var(--text-muted); text-decoration:none;">
-                ← Voltar para o portal
-            </a>
         </div>
+
+        <a href="../../index.php" class="back-link">← Voltar para o portal</a>
+
     </div>
-
-    <!-- Script para validação em tempo real -->
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('formCadastro');
-            const btn = document.getElementById('btnCadastrar');
-            
-            const nomeInput = document.getElementById('nome');
-            const emailInput = document.getElementById('email');
-            const senhaInput = document.getElementById('senha');
-            const confirmarInput = document.getElementById('confirmar_senha');
-            const termosCheck = document.getElementById('termos');
-            
-            const nomeDica = document.getElementById('nome-dica');
-            const emailDica = document.getElementById('email-dica');
-            const senhaDica = document.getElementById('senha-dica');
-            const confirmarDica = document.getElementById('confirmar-dica');
-            const forcaBarra = document.getElementById('senha-forca');
-            const forcaTexto = document.getElementById('senha-forca-texto');
-
-            // Validação do nome em tempo real
-            nomeInput.addEventListener('input', function() {
-                const val = this.value.trim();
-                if (val.length >= 2) {
-                    this.classList.remove('error');
-                    this.classList.add('success');
-                    nomeDica.textContent = '✅ Nome válido';
-                    nomeDica.className = 'senha-dica valida';
-                } else {
-                    this.classList.remove('success');
-                    this.classList.add('error');
-                    nomeDica.textContent = '❌ Mínimo 2 caracteres';
-                    nomeDica.className = 'senha-dica invalida';
-                }
-            });
-
-            // Validação do email em tempo real
-            emailInput.addEventListener('input', function() {
-                const val = this.value.trim();
-                const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                if (regex.test(val)) {
-                    this.classList.remove('error');
-                    this.classList.add('success');
-                    emailDica.textContent = '✅ Email válido';
-                    emailDica.className = 'senha-dica valida';
-                } else if (val.length > 0) {
-                    this.classList.remove('success');
-                    this.classList.add('error');
-                    emailDica.textContent = '❌ Email inválido';
-                    emailDica.className = 'senha-dica invalida';
-                } else {
-                    this.classList.remove('success', 'error');
-                    emailDica.textContent = 'Digite um email válido';
-                    emailDica.className = 'senha-dica';
-                }
-            });
-
-            // Força da senha
-            senhaInput.addEventListener('input', function() {
-                const val = this.value;
-                const forca = calcularForcaSenha(val);
-                
-                // Atualiza barra
-                forcaBarra.className = 'senha-forca';
-                if (val.length > 0) {
-                    if (forca < 40) {
-                        forcaBarra.classList.add('fraca');
-                        forcaTexto.textContent = '🔴 Fraca';
-                        forcaTexto.style.color = '#ef4444';
-                    } else if (forca < 70) {
-                        forcaBarra.classList.add('media');
-                        forcaTexto.textContent = '🟡 Média';
-                        forcaTexto.style.color = '#f59e0b';
-                    } else {
-                        forcaBarra.classList.add('forte');
-                        forcaTexto.textContent = '🟢 Forte';
-                        forcaTexto.style.color = '#10b981';
-                    }
-                } else {
-                    forcaTexto.textContent = '';
-                    forcaBarra.style.width = '0%';
-                }
-
-                // Valida tamanho
-                if (val.length >= 6) {
-                    this.classList.remove('error');
-                    this.classList.add('success');
-                    senhaDica.textContent = '✅ Senha válida';
-                    senhaDica.className = 'senha-dica valida';
-                } else if (val.length > 0) {
-                    this.classList.remove('success');
-                    this.classList.add('error');
-                    senhaDica.textContent = '❌ Mínimo 6 caracteres';
-                    senhaDica.className = 'senha-dica invalida';
-                } else {
-                    this.classList.remove('success', 'error');
-                    senhaDica.textContent = 'Mínimo 6 caracteres';
-                    senhaDica.className = 'senha-dica';
-                }
-
-                // Verifica confirmar senha
-                verificarConfirmarSenha();
-            });
-
-            // Confirmar senha
-            confirmarInput.addEventListener('input', verificarConfirmarSenha);
-
-            function verificarConfirmarSenha() {
-                const senha = senhaInput.value;
-                const confirmar = confirmarInput.value;
-
-                if (confirmar.length === 0) {
-                    confirmarInput.classList.remove('success', 'error');
-                    confirmarDica.textContent = 'As senhas devem coincidir';
-                    confirmarDica.className = 'senha-dica';
-                    return;
-                }
-
-                if (senha === confirmar) {
-                    confirmarInput.classList.remove('error');
-                    confirmarInput.classList.add('success');
-                    confirmarDica.textContent = '✅ Senhas coincidem';
-                    confirmarDica.className = 'senha-dica valida';
-                } else {
-                    confirmarInput.classList.remove('success');
-                    confirmarInput.classList.add('error');
-                    confirmarDica.textContent = '❌ Senhas não coincidem';
-                    confirmarDica.className = 'senha-dica invalida';
-                }
-            }
-
-            // Função para calcular força da senha
-            function calcularForcaSenha(senha) {
-                let forca = 0;
-                if (senha.length >= 6) forca += 20;
-                if (senha.length >= 10) forca += 20;
-                if (/[a-z]/.test(senha)) forca += 15;
-                if (/[A-Z]/.test(senha)) forca += 15;
-                if (/\d/.test(senha)) forca += 15;
-                if (/[^a-zA-Z0-9]/.test(senha)) forca += 15;
-                return Math.min(forca, 100);
-            }
-
-            // Prevenir submissão dupla
-            let submitted = false;
-
-            form.addEventListener('submit', function(e) {
-                // Valida termos
-                if (!termosCheck.checked) {
-                    e.preventDefault();
-                    alert('Você precisa aceitar os termos de uso e política de privacidade.');
-                    termosCheck.focus();
-                    return;
-                }
-
-                if (submitted) {
-                    e.preventDefault();
-                    return;
-                }
-
-                // Validação final antes de enviar
-                const nomeOk = nomeInput.value.trim().length >= 2;
-                const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value.trim());
-                const senhaOk = senhaInput.value.length >= 6;
-                const confirmarOk = senhaInput.value === confirmarInput.value;
-
-                if (!nomeOk || !emailOk || !senhaOk || !confirmarOk) {
-                    e.preventDefault();
-                    alert('Por favor, corrija os campos destacados antes de continuar.');
-                    return;
-                }
-
-                submitted = true;
-                btn.textContent = 'Criando conta...';
-                btn.disabled = true;
-            });
-
-            // Mostrar senha (opcional)
-            // Adiciona toggle de visibilidade da senha se desejar
-        });
-    </script>
 
 </body>
 </html>
